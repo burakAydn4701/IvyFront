@@ -1,9 +1,9 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, use } from 'react';
 import { api } from '@/app/lib/api';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { MessageSquare, ArrowUp } from 'lucide-react';
+import { ArrowLeft, MessageSquare, ArrowUp } from 'lucide-react';
 
 interface Post {
   id: string;
@@ -20,55 +20,81 @@ interface Post {
   upvoted_by_current_user?: boolean;
 }
 
-export default function HomePage() {
+interface Community {
+  id: string;
+  name: string;
+  description: string;
+  created_at: string;
+  members_count?: number;
+}
+
+export default function CommunityPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
+  const { id } = use(params);
+  const [community, setCommunity] = useState<Community | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const fetchPosts = async () => {
+    const fetchCommunityData = async () => {
+      setIsLoading(true);
+      setError(null);
+      
       try {
-        const allPosts = await api.getAllPosts();
+        // Fetch community details
+        console.log(`Fetching community with ID: ${id}`);
+        const communityData = await api.getCommunity(id);
+        console.log('Community data:', communityData);
+        setCommunity(communityData);
+        
+        // Fetch posts for this community
+        console.log(`Fetching posts for community with ID: ${id}`);
+        const communityPosts = await api.getCommunityPosts(id);
+        console.log('Community posts:', communityPosts);
+        
         // Sort posts by created_at (newest first)
-        const sortedPosts = allPosts.sort((a: Post, b: Post) => 
+        const sortedPosts = communityPosts.sort((a: Post, b: Post) => 
           new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
         );
         setPosts(sortedPosts);
       } catch (error) {
-        console.error('Failed to fetch posts:', error);
-        setError('Failed to load posts. Please try again later.');
+        console.error('Failed to fetch community data:', error);
+        setError(`Failed to load community: ${error instanceof Error ? error.message : 'Unknown error'}`);
       } finally {
         setIsLoading(false);
       }
     };
 
-    fetchPosts();
-  }, []);
-
-  const navigateToCommunity = (e: React.MouseEvent, communityId: string) => {
-    e.preventDefault();
-    e.stopPropagation();
-    router.push(`/communities/${communityId}`);
-  };
+    fetchCommunityData();
+  }, [id]);
 
   if (isLoading) {
-    return <div className="p-4 ml-64 mt-16">Loading posts...</div>;
+    return <div className="p-4 ml-64 mt-16">Loading community...</div>;
   }
 
-  if (error) {
-    return <div className="p-4 ml-64 mt-16 text-red-500">{error}</div>;
+  if (error || !community) {
+    return <div className="p-4 ml-64 mt-16 text-red-500">{error || 'Community not found'}</div>;
   }
 
   return (
     <main className="p-4 ml-64 mt-16">
       <div className="max-w-4xl mx-auto">
+
+        {/* Community Header */}
+        <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
+          <h1 className="text-2xl font-bold text-gray-900 mb-2">{community.name}</h1>
+          <p className="text-gray-600 mb-4">{community.description}</p>
+          <div className="flex items-center text-sm text-gray-600">
+            <span>Created {new Date(community.created_at).toLocaleDateString()}</span>
+          </div>
+        </div>
+
+        {/* Posts Section */}
         <div className="flex justify-between items-center mb-6">
-          <Link href="/" className="text-2xl font-bold text-gray-900 hover:text-green-600">
-            Recent Posts
-          </Link>
+          <h2 className="text-xl font-bold text-gray-900">Posts in {community.name}</h2>
           <Link 
-            href="/posts/new"
+            href={`/posts/new?community_id=${community.id}`}
             className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
           >
             Create Post
@@ -77,25 +103,15 @@ export default function HomePage() {
 
         {posts.length === 0 ? (
           <div className="bg-white rounded-lg shadow-sm p-6">
-            <p className="text-gray-900">No posts yet. Be the first to create a post!</p>
+            <p className="text-gray-900">No posts in this community yet. Be the first to create a post!</p>
           </div>
         ) : (
           <div className="space-y-4">
             {posts.map((post) => (
               <div key={post.id} className="bg-white rounded-lg shadow-sm p-6 hover:shadow-md transition-shadow">
-                <div className="flex justify-between items-start mb-2">
-                  <Link href={`/posts/${post.id}`}>
-                    <h2 className="text-xl font-bold text-gray-900 hover:text-green-600">{post.title}</h2>
-                  </Link>
-                  {post.community && (
-                    <div 
-                      onClick={(e) => navigateToCommunity(e, post.community!.id)}
-                      className="text-sm text-green-600 hover:text-green-700 cursor-pointer"
-                    >
-                      {post.community.name}
-                    </div>
-                  )}
-                </div>
+                <Link href={`/posts/${post.id}`}>
+                  <h3 className="text-xl font-bold text-gray-900 hover:text-green-600 mb-2">{post.title}</h3>
+                </Link>
                 
                 <Link href={`/posts/${post.id}`} className="block">
                   <p className="text-gray-900 mb-4 line-clamp-3">{post.content}</p>
@@ -131,4 +147,4 @@ export default function HomePage() {
       </div>
     </main>
   );
-}
+} 
