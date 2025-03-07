@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState, use } from 'react';
-import { api } from '@/app/lib/api';
+import { api } from  "../../lib/api"
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, MessageSquare, ArrowUp, Reply, Trash2 } from 'lucide-react';

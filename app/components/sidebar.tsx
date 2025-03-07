@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { api } from '@/app/lib/api';
+import { api } from '../lib/api';
 import Link from 'next/link';
 import { PlusCircle } from 'lucide-react';
 import CreateCommunityModal from './create-community-modal';

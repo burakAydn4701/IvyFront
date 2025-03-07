@@ -1,9 +1,10 @@
 'use client';
 import { useEffect, useState, use } from 'react';
-import { api } from '@/app/lib/api';
+import { api } from '@/lib/api';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, MessageSquare, ArrowUp } from 'lucide-react';
+import CreatePostModal from '@/components/create-post-modal';
 
 interface Post {
   id: string;
@@ -11,13 +12,11 @@ interface Post {
   content: string;
   user_id: string;
   community_id: string;
-  community?: { id: string; name: string };
-  user?: { id: string; username: string };
   created_at: string;
-  image_url?: string;
   upvotes_count: number;
   comments_count: number;
-  upvoted_by_current_user?: boolean;
+  user: { id: string; username: string };
+  image_url?: string;
 }
 
 interface Community {
@@ -35,6 +34,7 @@ export default function CommunityPage({ params }: { params: Promise<{ id: string
   const [posts, setPosts] = useState<Post[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isCreatePostModalOpen, setIsCreatePostModalOpen] = useState(false);
 
   useEffect(() => {
     const fetchCommunityData = async () => {
@@ -42,18 +42,10 @@ export default function CommunityPage({ params }: { params: Promise<{ id: string
       setError(null);
       
       try {
-        // Fetch community details
-        console.log(`Fetching community with ID: ${id}`);
         const communityData = await api.getCommunity(id);
-        console.log('Community data:', communityData);
         setCommunity(communityData);
         
-        // Fetch posts for this community
-        console.log(`Fetching posts for community with ID: ${id}`);
         const communityPosts = await api.getCommunityPosts(id);
-        console.log('Community posts:', communityPosts);
-        
-        // Sort posts by created_at (newest first)
         const sortedPosts = communityPosts.sort((a: Post, b: Post) => 
           new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
         );
@@ -80,7 +72,6 @@ export default function CommunityPage({ params }: { params: Promise<{ id: string
   return (
     <main className="p-4 ml-64 mt-16">
       <div className="max-w-4xl mx-auto">
-
         {/* Community Header */}
         <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
           <h1 className="text-2xl font-bold text-gray-900 mb-2">{community.name}</h1>
@@ -93,12 +84,15 @@ export default function CommunityPage({ params }: { params: Promise<{ id: string
         {/* Posts Section */}
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-xl font-bold text-gray-900">Posts in {community.name}</h2>
-          <Link 
-            href={`/posts/new?community_id=${community.id}`}
-            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
-          >
-            Create Post
-          </Link>
+          
+          {typeof window !== 'undefined' && localStorage.getItem('authToken') && (
+            <button
+              onClick={() => setIsCreatePostModalOpen(true)}
+              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+            >
+              Create Post
+            </button>
+          )}
         </div>
 
         {posts.length === 0 ? (
@@ -109,23 +103,21 @@ export default function CommunityPage({ params }: { params: Promise<{ id: string
           <div className="space-y-4">
             {posts.map((post) => (
               <div key={post.id} className="bg-white rounded-lg shadow-sm p-6 hover:shadow-md transition-shadow">
+                <p className="text-sm text-gray-500 mb-1">@{post.user.username}</p>
                 <Link href={`/posts/${post.id}`}>
                   <h3 className="text-xl font-bold text-gray-900 hover:text-green-600 mb-2">{post.title}</h3>
                 </Link>
                 
+                {post.image_url && (
+                  <img 
+                    src={post.image_url} 
+                    alt={post.title}
+                    className="rounded-lg max-h-96 object-cover mb-4"
+                  />
+                )}
+                
                 <Link href={`/posts/${post.id}`} className="block">
                   <p className="text-gray-900 mb-4 line-clamp-3">{post.content}</p>
-                  
-                  {post.image_url && (
-                    <div className="mb-4">
-                      <img 
-                        src={post.image_url} 
-                        alt={post.title}
-                        className="rounded-lg max-h-48 object-cover"
-                      />
-                    </div>
-                  )}
-                  
                   <div className="flex items-center text-sm text-gray-900">
                     <div className="flex items-center mr-4">
                       <ArrowUp className="w-4 h-4 mr-1" />
@@ -145,6 +137,14 @@ export default function CommunityPage({ params }: { params: Promise<{ id: string
           </div>
         )}
       </div>
+      <CreatePostModal
+        communityId={id}
+        isOpen={isCreatePostModalOpen}
+        onClose={() => setIsCreatePostModalOpen(false)}
+        onPostCreated={() => {
+          window.location.reload();
+        }}
+      />
     </main>
   );
-} 
+}

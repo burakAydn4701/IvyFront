@@ -1,7 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { X, ImagePlus } from 'lucide-react';
-import { api } from '@/app/lib/api';
+import { api } from '@/lib/api';
 
 interface CreateCommunityModalProps {
   isOpen: boolean;

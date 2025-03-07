@@ -9,6 +9,8 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@rails/actioncable": "^8.0.100",
+    "date-fns": "^4.1.0",
     "lucide-react": "^0.475.0",
     "next": "15.1.7",
     "react": "^19.0.0",
@@ -17,6 +19,7 @@
   "devDependencies": {
     "@eslint/eslintrc": "^3",
     "@types/node": "^20",
+    "@types/rails__actioncable": "^6.1.11",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
