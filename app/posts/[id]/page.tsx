@@ -1,9 +1,12 @@
 'use client';
-import { useEffect, useState, use } from 'react';
-import { api } from '@/app/lib/api';
-import { ArrowUp } from 'lucide-react';
+import { useEffect, useState, use, useRef } from 'react';
+import { api, normalizeId } from '@/app/lib/api';
+import { ArrowUp, MoreVertical } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 
 export default function PostPage({ params }: { params: any }) {
+  const router = useRouter();
   const resolvedParams = use(params) as { id: string };
   const postId = resolvedParams.id;
   
@@ -14,11 +17,53 @@ export default function PostPage({ params }: { params: any }) {
   const [commentText, setCommentText] = useState('');
   const [replyText, setReplyText] = useState('');
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const isMenuActionRef = useRef(false);
   
   // Simple check for authentication
   const isLoggedIn = typeof window !== 'undefined' && !!localStorage.getItem('authToken');
 
+  // Close menu when clicking outside
   useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      // Don't close if the click is on a menu button (let the toggle handle it)
+      if ((event.target as Element).closest('[data-menu-button]') || 
+          (event.target as Element).closest('[data-menu-dropdown]')) {
+        return;
+      }
+      
+      // If we're in the middle of a menu action, don't close
+      if (isMenuActionRef.current) {
+        isMenuActionRef.current = false;
+        return;
+      }
+      
+      setIsMenuOpen(false);
+    };
+    
+    document.addEventListener('click', handleClickOutside);
+    return () => {
+      document.removeEventListener('click', handleClickOutside);
+    };
+  }, []);
+
+  useEffect(() => {
+    // Get current user ID from token
+    const token = localStorage.getItem('authToken');
+    if (token) {
+      try {
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        const userId = payload.user_id.toString();
+        console.log('Current user ID:', userId);
+        setCurrentUserId(userId);
+      } catch (e) {
+        console.error('Error parsing token:', e);
+      }
+    } else {
+      console.log('No auth token found');
+    }
+
     async function loadData() {
       setLoading(true);
       try {
@@ -26,6 +71,11 @@ export default function PostPage({ params }: { params: any }) {
         const postData = await api.getPost(postId);
         console.log('Post data received:', postData);
         setPost(postData);
+        
+        // Debug post ownership
+        if (currentUserId) {
+          console.log(`Post owner check: Post user_id=${postData.user_id}, Current user_id=${currentUserId}, Match=${postData.user_id.toString() === currentUserId.toString()}`);
+        }
         
         // Fetch comments
         const commentsData = await api.getPostComments(postId);
@@ -128,6 +178,21 @@ export default function PostPage({ params }: { params: any }) {
     }
   };
 
+  const handleDeletePost = async () => {
+    if (!confirm('Are you sure you want to delete this post? This action cannot be undone.')) {
+      return;
+    }
+    
+    try {
+      await api.deletePost(postId);
+      // Navigate back to the community page or home page
+      router.push(`/communities/${post.community_id}`);
+    } catch (error) {
+      console.error('Failed to delete post:', error);
+      alert('Failed to delete post. Please try again.');
+    }
+  };
+
   // Simple loading state
   if (loading) {
     return <div className="p-4 text-center">Loading post...</div>;
@@ -147,9 +212,62 @@ export default function PostPage({ params }: { params: any }) {
     <div className="max-w-4xl mx-auto p-6 bg-white rounded-lg shadow-sm">
       {/* Post Header */}
       <div className="mb-6">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">{post.title}</h1>
+        <div className="flex justify-between items-start">
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">{post.title}</h1>
+          
+          {/* Three-dot menu - only shown for user's own posts */}
+          {normalizeId(post.user_id) === normalizeId(currentUserId) && (
+            <div className="relative">
+              <button
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setIsMenuOpen(!isMenuOpen);
+                  
+                  // Debug info
+                  const postUserId = normalizeId(post.user_id);
+                  const currentId = normalizeId(currentUserId);
+                  console.log(`Post ${post.id} - User ID: ${postUserId}, Current User ID: ${currentId}, Match: ${postUserId === currentId}`);
+                }}
+                data-menu-button="true"
+                className="text-gray-500 hover:text-gray-700 focus:outline-none bg-gray-100 hover:bg-gray-200 rounded-full p-2"
+                aria-label="Post options"
+              >
+                <MoreVertical className="w-6 h-6" />
+              </button>
+              
+              {/* Dropdown menu */}
+              {isMenuOpen && (
+                <div 
+                  className="absolute right-0 mt-1 w-36 bg-white rounded-md shadow-lg z-20 border border-gray-200"
+                  onClick={(e) => e.stopPropagation()}
+                  data-menu-dropdown="true"
+                >
+                  <button
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      isMenuActionRef.current = true;
+                      handleDeletePost();
+                    }}
+                    className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-100 rounded-md"
+                  >
+                    Delete post
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
         <div className="flex items-center text-sm text-gray-500">
-          <span>Posted by {post.user?.username || 'Anonymous'}</span>
+          <span>Posted by {post.user ? (
+            <Link 
+              href={`/users/${post.user.id}`}
+              className="hover:text-green-600 hover:underline"
+            >
+              {post.user.username}
+            </Link>
+          ) : 'Anonymous'}</span>
           <span className="mx-2">•</span>
           <span>{new Date(post.created_at).toLocaleDateString()}</span>
         </div>
@@ -211,7 +329,16 @@ export default function PostPage({ params }: { params: any }) {
             {comments.map((comment) => (
               <div key={comment.id} className="border-b pb-4">
                 <div className="flex items-center mb-2">
-                  <span className="font-medium text-gray-900">{comment.user?.username || 'Anonymous'}</span>
+                  {comment.user ? (
+                    <Link 
+                      href={`/users/${comment.user.id}`}
+                      className="font-medium text-gray-900 hover:text-green-600 hover:underline"
+                    >
+                      {comment.user.username}
+                    </Link>
+                  ) : (
+                    <span className="font-medium text-gray-900">Anonymous</span>
+                  )}
                   <span className="mx-2 text-gray-400">•</span>
                   <span className="text-sm text-gray-500">{new Date(comment.created_at).toLocaleDateString()}</span>
                 </div>

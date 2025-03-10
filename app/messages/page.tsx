@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { api } from '../lib/api';
 import ChatList from '../components/ChatList';
 import ChatDetail from '../components/ChatDetail';
@@ -8,10 +8,14 @@ import type { User, Chat } from '../types';
 
 export default function MessagesPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const chatIdParam = searchParams.get('chatId');
+  
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [chats, setChats] = useState<Chat[]>([]);
   const [selectedChat, setSelectedChat] = useState<Chat | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   // Fetch current user and chats
   useEffect(() => {
@@ -24,24 +28,64 @@ export default function MessagesPage() {
     const fetchData = async () => {
       try {
         setIsLoading(true);
+        setError(null);
+        
+        // Fetch current user
         const userData = await api.getCurrentUser();
         setCurrentUser(userData);
 
+        // Fetch all chats
         const chatsData = await api.getChats();
         console.log("Chats data received:", chatsData);
         setChats(chatsData);
+        
+        // If chatId is provided in URL, find and select that chat
+        if (chatIdParam) {
+          // First try to find the chat in the list
+          const chatToSelect = chatsData.find((chat: Chat) => chat.id === chatIdParam);
+          
+          if (chatToSelect) {
+            setSelectedChat(chatToSelect);
+          } else {
+            // If not in the list, fetch it directly
+            try {
+              const chatData = await api.getChat(chatIdParam);
+              
+              if (chatData && chatData.id) {
+                setSelectedChat(chatData);
+                
+                // Add this chat to the list if it's not already there
+                if (!chatsData.some((c: Chat) => c.id === chatData.id)) {
+                  setChats(prevChats => [...prevChats, chatData]);
+                }
+              } else {
+                throw new Error('Invalid chat data received');
+              }
+            } catch (error) {
+              console.error(`Failed to fetch chat with ID ${chatIdParam}:`, error);
+              setError(`Failed to load the requested chat. Please try again or select another conversation.`);
+            }
+          }
+        }
       } catch (error) {
         console.error('Failed to fetch data:', error);
+        setError('Failed to load messages. Please refresh the page to try again.');
       } finally {
         setIsLoading(false);
       }
     };
 
     fetchData();
-  }, [router]);
+  }, [router, chatIdParam]);
 
   const handleSelectChat = (chat: Chat) => {
     setSelectedChat(chat);
+    setError(null);
+    
+    // Update URL with the selected chat ID without reloading the page
+    const url = new URL(window.location.href);
+    url.searchParams.set('chatId', chat.id);
+    window.history.pushState({}, '', url);
   };
 
   if (isLoading) {
@@ -55,6 +99,12 @@ export default function MessagesPage() {
   return (
     <div className="container mx-auto p-4 max-w-4xl">
       <h1 className="text-3xl font-bold mb-6 text-gray-800">Messages</h1>
+      
+      {error && (
+        <div className="mb-4 p-3 bg-red-100 text-red-700 rounded-md">
+          {error}
+        </div>
+      )}
       
       <div className="flex h-[500px] bg-white shadow-md rounded-lg overflow-hidden">
         {/* Chat list sidebar - fixed width */}

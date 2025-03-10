@@ -299,7 +299,7 @@ export default function ChatDetail({ chatId, currentUser, otherUser }: ChatDetai
             }`}
           >
             <div
-              className={`inline-block p-2 rounded-lg ${
+              className={`inline-block p-2 rounded-lg relative ${
                 message.user_id === currentUser.id
                   ? 'bg-green-500 text-white'
                   : 'bg-gray-200 text-gray-900'

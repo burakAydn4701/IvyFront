@@ -33,6 +33,12 @@ export async function fetchApi(endpoint: string, options: RequestInit = {}) {
   }
 }
 
+// Helper function to normalize IDs for comparison
+export const normalizeId = (id: any): string => {
+  if (id === null || id === undefined) return '';
+  return String(id).trim();
+};
+
 export const api = {
   // Communities
   getCommunities: () => fetchApi('/api/communities'),
@@ -456,84 +462,111 @@ export const api = {
 
   // Get a specific chat with messages
   getChat: async (chatId: string) => {
-    const token = localStorage.getItem('authToken');
-    if (!token) throw new Error('Not authenticated');
-    
     try {
+      const token = localStorage.getItem('authToken');
+      if (!token) throw new Error('Not authenticated');
+      
+      // Validate chatId
+      if (!chatId) {
+        throw new Error('Invalid chat ID');
+      }
+      
       const response = await fetch(`${API_BASE_URL}/api/chats/${chatId}`, {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
-        },
+          'Authorization': `Bearer ${token}`
+        }
       });
       
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error(`Failed to fetch chat (${response.status}): ${errorText}`);
-        throw new Error(`Failed to fetch chat: ${response.statusText}`);
+        const errorData = await response.json();
+        throw new Error(errorData.error || `Failed to fetch chat: ${response.statusText}`);
       }
       
       const data = await response.json();
-      console.log("Raw chat data from API:", data);
       
       // Extract chat and messages from the response
       const chatData = data.chat || {};
       const messages = data.messages || [];
-      
-      console.log("Extracted chat data:", chatData);
-      console.log("Extracted messages:", messages);
       
       // Transform the data to match our expected structure
       const transformedChat = {
         id: chatData.id || chatId,
         created_at: chatData.created_at || new Date().toISOString(),
         updated_at: chatData.updated_at || new Date().toISOString(),
-        other_user: chatData.opposed_user || data.other_user || { username: 'Unknown User' },
-        messages: messages.map((msg: any) => {
-          console.log("Processing message:", msg);
-          return {
-            id: msg.id,
-            content: msg.body || msg.content || '',
-            body: msg.body || msg.content || '',
-            user_id: msg.user_id || '',
-            chat_id: chatData.id || chatId,
-            created_at: msg.created_at || new Date().toISOString(),
-            user: {
-              id: msg.user_id || '',
-              username: msg.is_mine ? 'You' : (chatData.opposed_user?.username || 'Unknown User')
-            }
-          };
-        })
+        other_user: chatData.opposed_user || data.other_user || chatData.recipient || { username: 'Unknown User' },
+        messages: messages.map((msg: any) => ({
+          id: msg.id,
+          content: msg.body || msg.content || '',
+          body: msg.body || msg.content || '',
+          user_id: msg.user_id || '',
+          chat_id: chatData.id || chatId,
+          created_at: msg.created_at || new Date().toISOString(),
+          user: {
+            id: msg.user_id || '',
+            username: msg.is_mine ? 'You' : (chatData.opposed_user?.username || 'Unknown User')
+          }
+        }))
       };
       
-      console.log("Transformed chat:", transformedChat);
       return transformedChat;
     } catch (error) {
-      console.error("Error in getChat:", error);
+      console.error('Error fetching chat:', error);
       throw error;
     }
   },
 
   // Create a new chat with a user
-  createChat: async (userId: string) => {
-    const token = localStorage.getItem('authToken');
-    if (!token) throw new Error('Not authenticated');
-    
-    const response = await fetch(`${API_BASE_URL}/api/chats`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ user_id: userId }),
-    });
-    
-    if (!response.ok) {
-      throw new Error('Failed to create chat');
+  createChat: async (recipientId: string) => {
+    try {
+      const token = localStorage.getItem('authToken');
+      if (!token) throw new Error('Not authenticated');
+      
+      console.log(`Creating chat with recipient ID: ${recipientId}`);
+      
+      const response = await fetch(`${API_BASE_URL}/api/chats`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          recipient_id: recipientId
+        })
+      });
+      
+      // Log the raw response status
+      console.log(`Chat creation response status: ${response.status}`);
+      
+      // Handle non-OK responses
+      if (!response.ok) {
+        let errorMessage = `Failed to create chat: ${response.statusText}`;
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || errorMessage;
+        } catch (e) {
+          // If we can't parse the error as JSON, use the status text
+          console.error('Error parsing error response:', e);
+        }
+        throw new Error(errorMessage);
+      }
+      
+      // Parse the response
+      try {
+        const data = await response.json();
+        console.log('Chat creation response data:', data);
+        return data;
+      } catch (e) {
+        console.error('Error parsing response as JSON:', e);
+        // Return a minimal object with the status to indicate success
+        // This helps in case the server returns empty or non-JSON response
+        return { success: true, status: response.status };
+      }
+    } catch (error) {
+      console.error('Error creating chat:', error);
+      throw error;
     }
-    
-    return response.json();
   },
 
   // Send a message in a chat
@@ -636,6 +669,67 @@ export const api = {
         created_at: new Date().toISOString(),
         is_mine: true
       };
+    }
+  },
+
+  // Delete a message in a chat
+  deleteChatMessage: async (chatId: string, messageId: string) => {
+    const token = localStorage.getItem('authToken');
+    if (!token) throw new Error('Not authenticated');
+    
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/chats/${chatId}/messages/${messageId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to delete message: ${response.statusText}`);
+      }
+      
+      return true;
+    } catch (error) {
+      console.error("Error in deleteChatMessage:", error);
+      throw error;
+    }
+  },
+
+  // Get posts by a specific user
+  getUserPosts: async (userId: string) => {
+    const token = localStorage.getItem('authToken');
+    if (!token) throw new Error('Not authenticated');
+    
+    try {
+      console.log(`Fetching posts for user ${userId}`);
+      const response = await fetch(`${API_BASE_URL}/api/users/${userId}/posts`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`User posts endpoint returned ${response.status}:`, errorText);
+        return [];
+      }
+      
+      const data = await response.json();
+      console.log(`Received ${data.length} posts for user ${userId}`);
+      
+      // Transform the data to match our frontend structure
+      return data.map((post: any) => ({
+        ...post,
+        // If the backend returns 'body' but our frontend expects 'content'
+        content: post.content || post.body || '',
+      }));
+    } catch (error) {
+      console.error("Error in getUserPosts:", error);
+      return [];
     }
   },
 }; 

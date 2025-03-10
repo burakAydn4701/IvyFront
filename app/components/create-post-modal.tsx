@@ -77,7 +77,7 @@ export default function CreatePostModal({ communityId, isOpen, onClose, onPostCr
 
         <h2 className="text-2xl font-bold text-gray-900 mb-6">Create a Post</h2>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4 text-gray-900">
           <div>
             <label htmlFor="title" className="block text-gray-900 font-bold mb-2">
               Title
