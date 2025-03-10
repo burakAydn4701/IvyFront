@@ -15,41 +15,22 @@ export default function SignupPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null);
-    
-    // Basic validation
-    if (password !== passwordConfirmation) {
-      setError('Passwords do not match');
-      return;
-    }
-    
     setIsLoading(true);
-    
+    setError(null);
+
     try {
-      // Only send required fields to the API
-      const response = await api.signup({
+      // Call the signup API
+      await api.signup({
         username,
         email,
         password
       });
       
-      // After successful signup, log in the user
-      const loginResponse = await api.login({
-        email_or_username: email,
-        password
-      });
-      
-      // Store the JWT token
-      localStorage.setItem('authToken', loginResponse.token);
-      
-      // Redirect to homepage
-      router.push('/');
-      
-      // Reload the homepage
-      window.location.reload();
+      // Redirect to login page on success
+      router.push('/login?registered=true');
     } catch (error) {
       console.error('Signup failed:', error);
-      setError(error instanceof Error ? error.message : 'Signup failed. Please try again.');
+      setError('Signup failed. Please try again.');
     } finally {
       setIsLoading(false);
     }

@@ -1,6 +1,7 @@
 'use client';
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useMemo } from 'react';
 import { format } from 'date-fns';
+import { useState } from 'react';
 
 type User = {
   id: string;
@@ -25,10 +26,16 @@ interface MessageListProps {
 
 export default function MessageList({ messages, currentUserId }: MessageListProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [isLoading, setIsLoading] = useState(false);
 
   // Scroll to bottom when messages change
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  // Group messages by date
+  const groupedMessages = useMemo(() => {
+    // ... existing code ...
   }, [messages]);
 
   const formatMessageTime = (dateString: string) => {

@@ -34,9 +34,8 @@ export async function fetchApi(endpoint: string, options: RequestInit = {}) {
 }
 
 // Helper function to normalize IDs for comparison
-export const normalizeId = (id: any): string => {
-  if (id === null || id === undefined) return '';
-  return String(id).trim();
+export const normalizeId = (id: string | number): string => {
+  return id?.toString() || '';
 };
 
 export const api = {
@@ -597,7 +596,7 @@ export const api = {
       
       if (consumer) {
         // Find existing subscription or create a new one
-        // @ts-ignore - TypeScript doesn't know about the subscriptions property
+        // @ts-expect-error - TypeScript doesn't know about the subscriptions property
         const subscriptions = consumer.subscriptions.subscriptions || [];
         let chatSubscription = null;
         
@@ -617,7 +616,7 @@ export const api = {
         if (chatSubscription) {
           console.log('Using existing subscription to send message');
           // Use the perform method to send the message
-          // @ts-ignore - TypeScript doesn't know about the perform method
+          // @ts-expect-error - TypeScript doesn't know about the perform method
           chatSubscription.perform('receive', { 
             message: {
               body: content
@@ -634,7 +633,7 @@ export const api = {
             {
               connected() {
                 console.log(`Temporary subscription connected, sending message`);
-                // @ts-ignore - TypeScript doesn't know about the perform method
+                // @ts-expect-error - TypeScript doesn't know about the perform method
                 this.perform('receive', { 
                   message: {
                     body: content

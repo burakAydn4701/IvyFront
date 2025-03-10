@@ -44,7 +44,6 @@ export default function CommentPage({ params }: { params: Promise<{ id: string }
   const [replyText, setReplyText] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [apiError, setApiError] = useState<string | null>(null);
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
   const [isDeletingComment, setIsDeletingComment] = useState<string | null>(null);
   
@@ -89,7 +88,7 @@ export default function CommentPage({ params }: { params: Promise<{ id: string }
         }
       } catch (error) {
         console.error('Failed to fetch comment data:', error);
-        setApiError('Failed to load comment.');
+        setError('Failed to load comment');
       } finally {
         setIsLoading(false);
       }

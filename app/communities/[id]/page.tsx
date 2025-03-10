@@ -3,7 +3,7 @@ import { useEffect, useState, use, useRef } from 'react';
 import { api, normalizeId } from '@/lib/api';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, MessageSquare, ArrowUp, MoreVertical } from 'lucide-react';
+import { MessageSquare, ArrowUp, MoreVertical } from 'lucide-react';
 import CreatePostModal from '@/components/create-post-modal';
 
 interface Post {
@@ -27,16 +27,16 @@ interface Community {
   members_count?: number;
 }
 
-export default function CommunityPage({ params }: { params: Promise<{ id: string }> }) {
-  const router = useRouter();
-  const { id } = use(params);
+export default function CommunityPage({ params }: { params: { id: string } }) {
+  const communityId = params.id;
   const [community, setCommunity] = useState<Community | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isCreatePostModalOpen, setIsCreatePostModalOpen] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [isMenuOpen, setIsMenuOpen] = useState<Record<string, boolean>>({});
+  const menuRef = useRef<HTMLDivElement>(null);
   const isMenuActionRef = useRef(false);
 
   useEffect(() => {
@@ -60,10 +60,10 @@ export default function CommunityPage({ params }: { params: Promise<{ id: string
       setError(null);
       
       try {
-        const communityData = await api.getCommunity(id);
+        const communityData = await api.getCommunity(communityId);
         setCommunity(communityData);
         
-        const communityPosts = await api.getCommunityPosts(id);
+        const communityPosts = await api.getCommunityPosts(communityId);
         console.log('Posts data:', communityPosts);
         const sortedPosts = communityPosts.sort((a: Post, b: Post) => 
           new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
@@ -78,7 +78,7 @@ export default function CommunityPage({ params }: { params: Promise<{ id: string
     };
 
     fetchCommunityData();
-  }, [id]);
+  }, [communityId]);
 
   // Close menu when clicking outside
   useEffect(() => {
@@ -95,7 +95,7 @@ export default function CommunityPage({ params }: { params: Promise<{ id: string
         return;
       }
       
-      setOpenMenuId(null);
+      setIsMenuOpen({});
     };
     
     document.addEventListener('click', handleClickOutside);
@@ -127,13 +127,9 @@ export default function CommunityPage({ params }: { params: Promise<{ id: string
       event.stopPropagation();
     }
     
-    console.log('Toggling menu for post:', postId, 'Current open menu:', openMenuId);
+    console.log('Toggling menu for post:', postId, 'Current open menu:', isMenuOpen);
     
-    if (openMenuId === postId) {
-      setOpenMenuId(null);
-    } else {
-      setOpenMenuId(postId);
-    }
+    setIsMenuOpen({ ...isMenuOpen, [postId]: !isMenuOpen[postId] });
   };
 
   if (isLoading) {
@@ -199,7 +195,7 @@ export default function CommunityPage({ params }: { params: Promise<{ id: string
                       </button>
                       
                       {/* Dropdown menu */}
-                      {openMenuId === post.id && (
+                      {isMenuOpen[post.id] && (
                         <div 
                           className="absolute right-0 mt-1 w-36 bg-white rounded-md shadow-lg z-20 border border-gray-200"
                           onClick={(e) => e.stopPropagation()}
@@ -265,7 +261,7 @@ export default function CommunityPage({ params }: { params: Promise<{ id: string
         )}
       </div>
       <CreatePostModal
-        communityId={id}
+        communityId={communityId}
         isOpen={isCreatePostModalOpen}
         onClose={() => setIsCreatePostModalOpen(false)}
         onPostCreated={() => {

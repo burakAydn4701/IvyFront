@@ -13,11 +13,27 @@ interface ChatDetailProps {
 interface ChatSubscription {
   identifier: string;
   pingInterval?: NodeJS.Timeout;
-  perform: (action: string, data: any) => void;
+  perform: (action: string, data: Record<string, unknown>) => void;
   sendMessage: (message: string) => void;
   markAsRead: () => void;
   unsubscribe: () => void;
 }
+
+type WebSocketMessage = {
+  type?: string;
+  message?: string;
+  body?: string;
+  content?: string;
+  id?: string;
+  user_id?: string;
+  chat_id?: string;
+  created_at?: string;
+  is_mine?: boolean;
+  user?: {
+    id: string;
+    username: string;
+  };
+};
 
 export default function ChatDetail({ chatId, currentUser, otherUser }: ChatDetailProps) {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -75,20 +91,20 @@ export default function ChatDetail({ chatId, currentUser, otherUser }: ChatDetai
             console.log(`Connected to chat ${chatId} via WebSocket`);
             
             // Set up client-side ping every 4 minutes (slightly less than server's 5 minutes)
-            (this as any).pingInterval = setInterval(() => {
+            (this as ChatSubscription).pingInterval = setInterval(() => {
               console.log('Sending ping to keep connection alive');
-              (this as any).perform('receive', { type: 'ping' });
+              (this as ChatSubscription).perform('receive', { type: 'ping' });
             }, 4 * 60 * 1000);
           },
           
           disconnected() {
             console.log(`Disconnected from chat ${chatId}`);
-            if ((this as any).pingInterval) {
-              clearInterval((this as any).pingInterval);
+            if ((this as ChatSubscription).pingInterval) {
+              clearInterval((this as ChatSubscription).pingInterval);
             }
           },
           
-          received(data: any) {
+          received(data: WebSocketMessage) {
             console.log('Received WebSocket message:', data);
             
             // Handle different message types
@@ -173,10 +189,8 @@ export default function ChatDetail({ chatId, currentUser, otherUser }: ChatDetai
           
           // Send a message
           sendMessage(message: string) {
-            console.log('Sending message via WebSocket:', message);
-            (this as any).perform('receive', { 
-              command: 'message',
-              chat_id: chatId,
+            console.log(`Sending message to chat ${chatId}: ${message}`);
+            (this as ChatSubscription).perform('receive', { 
               message: {
                 body: message
               }
@@ -185,7 +199,8 @@ export default function ChatDetail({ chatId, currentUser, otherUser }: ChatDetai
           
           // Mark messages as read
           markAsRead() {
-            (this as any).perform('mark_as_read');
+            console.log(`Marking chat ${chatId} as read`);
+            (this as ChatSubscription).perform('mark_as_read', {});
           }
         }
       ) as unknown as ChatSubscription;
