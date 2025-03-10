@@ -21,11 +21,21 @@ interface ChatSubscription {
 
 type WebSocketMessage = {
   type?: string;
-  message?: string;
+  message?: {
+    body?: string;
+    id?: string;
+    user_id?: string;
+    created_at?: string;
+    user?: {
+      id: string;
+      username: string;
+    };
+  };
   body?: string;
   content?: string;
   id?: string;
   user_id?: string;
+  sender_id?: string;
   chat_id?: string;
   created_at?: string;
   is_mine?: boolean;
@@ -33,7 +43,7 @@ type WebSocketMessage = {
     id: string;
     username: string;
   };
-};
+} | string;  // Allow string type for raw message format
 
 export default function ChatDetail({ chatId, currentUser, otherUser }: ChatDetailProps) {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -108,13 +118,13 @@ export default function ChatDetail({ chatId, currentUser, otherUser }: ChatDetai
             console.log('Received WebSocket message:', data);
             
             // Handle different message types
-            if (data.type === 'ping' || data.type === 'pong' || data.type === 'connected') {
+            if (typeof data === 'object' && data.type === 'ping' || data.type === 'pong' || data.type === 'connected') {
               console.log(`Connection status: ${data.message || data.type}`);
               return;
             }
             
             // Check if this is a message or some other type of data
-            if (!data || (!data.message && !data.body && !data.content)) {
+            if (!data || (typeof data === 'object' && !data.message?.body && !data.body && !data.content)) {
               console.log('Received non-message data, ignoring:', data);
               return;
             }
@@ -122,33 +132,40 @@ export default function ChatDetail({ chatId, currentUser, otherUser }: ChatDetai
             // Extract the actual message content
             let messageContent = '';
             
-            // Handle Ruby-style hash format: {"body"=>"message text"}
-            if (typeof data === 'string' && data.includes('"body"=>')) {
-              const match = data.match(/"body"=>"([^"]*)"/);
-              if (match && match[1]) {
-                messageContent = match[1];
-              }
-            } else if (typeof data.message === 'string' && data.message.includes('"body"=>')) {
-              const match = data.message.match(/"body"=>"([^"]*)"/);
-              if (match && match[1]) {
-                messageContent = match[1];
+            // Handle different message formats
+            if (typeof data === 'string') {
+              // Handle Ruby-style hash format: {"body"=>"message text"}
+              if (data.includes('"body"=>')) {
+                const match = data.match(/"body"=>"([^"]*)"/);
+                if (match && match[1]) {
+                  messageContent = match[1];
+                }
+              } else {
+                // Try to parse as JSON
+                try {
+                  const parsedData = JSON.parse(data);
+                  messageContent = parsedData.message?.body || parsedData.body || parsedData.content || '';
+                } catch (e) {
+                  // If not valid JSON, use as is
+                  messageContent = data;
+                }
               }
             } else {
-              // Regular format
+              // Regular object format
               messageContent = data.message?.body || data.body || data.content || '';
             }
             
             // Format the message to match our Message type
             const messageObj: Message = {
-              id: data.id || data.message?.id || `ws-${Date.now()}`,
+              id: typeof data === 'object' ? (data.id || data.message?.id || `ws-${Date.now()}`) : `ws-${Date.now()}`,
               content: messageContent,
               body: messageContent,
-              user_id: data.message?.user_id || data.user_id || data.sender_id || '',
+              user_id: typeof data === 'object' ? (data.message?.user_id || data.user_id || data.sender_id || '') : '',
               chat_id: chatId,
-              created_at: data.message?.created_at || data.created_at || new Date().toISOString(),
+              created_at: typeof data === 'object' ? (data.message?.created_at || data.created_at || new Date().toISOString()) : new Date().toISOString(),
               user: {
-                id: data.message?.user_id || data.user_id || data.sender_id || '',
-                username: (data.message?.user_id || data.user_id || data.sender_id) === currentUser.id 
+                id: typeof data === 'object' ? (data.message?.user_id || data.user_id || data.sender_id || '') : '',
+                username: typeof data === 'object' && (data.message?.user_id || data.user_id || data.sender_id) === currentUser.id 
                   ? currentUser.username 
                   : otherUser.username
               }

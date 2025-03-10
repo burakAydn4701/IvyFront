@@ -27,8 +27,9 @@ interface Community {
   members_count?: number;
 }
 
-export default function CommunityPage({ params }: { params: { id: string } }) {
-  const communityId = params.id;
+export default function CommunityPage({ params }: { params: Promise<{ id: string }> | { id: string } }) {
+  // Use the params safely whether it's a Promise or direct object
+  const communityId = 'then' in params ? use(params).id : params.id;
   const [community, setCommunity] = useState<Community | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -132,6 +133,56 @@ export default function CommunityPage({ params }: { params: { id: string } }) {
     setIsMenuOpen({ ...isMenuOpen, [postId]: !isMenuOpen[postId] });
   };
 
+  // Fix the normalizeId call where it's used with currentUserId
+  const isCurrentUserPost = (post: Post) => {
+    if (!currentUserId) return false;
+    return normalizeId(post.user_id) === normalizeId(currentUserId);
+  };
+
+  // Update where normalizeId is used with currentUserId
+  const renderPostMenu = (post: Post) => {
+    // Only show menu for the current user's posts
+    if (!isCurrentUserPost(post)) return null;
+    
+    return (
+      <div className="relative">
+        <button
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            toggleMenu(post.id, e);
+            
+            // Debug info with more details
+            console.log(`Post ${post.id} - User: ${post.user.username}, Current user match: ${isCurrentUserPost(post)}`);
+          }}
+          className="text-gray-500 hover:text-gray-700 focus:outline-none bg-gray-100 hover:bg-gray-200 rounded-full p-2"
+          aria-label="Post options"
+        >
+          <MoreVertical className="w-5 h-5" />
+        </button>
+        
+        {isMenuOpen[post.id] && (
+          <div 
+            className="absolute right-0 mt-1 w-36 bg-white rounded-md shadow-lg z-20 border border-gray-200"
+            ref={menuRef}
+          >
+            <button
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                isMenuActionRef.current = true;
+                handleDeletePost(post.id);
+              }}
+              className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-100 rounded-md"
+            >
+              Delete post
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   if (isLoading) {
     return <div className="p-4 ml-64 mt-16">Loading community...</div>;
   }
@@ -184,37 +235,7 @@ export default function CommunityPage({ params }: { params: { id: string } }) {
                 <div key={post.id} className="bg-white rounded-lg shadow-sm p-6 hover:shadow-md transition-shadow relative">
                   {/* Three-dot menu - only shown for user's own posts */}
                   {isOwner && (
-                    <div className="absolute top-3 right-3 z-10">
-                      <button
-                        onClick={(e) => toggleMenu(post.id, e)}
-                        data-menu-button="true"
-                        className="text-gray-500 hover:text-gray-700 focus:outline-none bg-gray-100 hover:bg-gray-200 rounded-full p-1"
-                        aria-label="Post options"
-                      >
-                        <MoreVertical className="w-5 h-5" />
-                      </button>
-                      
-                      {/* Dropdown menu */}
-                      {isMenuOpen[post.id] && (
-                        <div 
-                          className="absolute right-0 mt-1 w-36 bg-white rounded-md shadow-lg z-20 border border-gray-200"
-                          onClick={(e) => e.stopPropagation()}
-                          data-menu-dropdown="true"
-                        >
-                          <button
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              isMenuActionRef.current = true;
-                              handleDeletePost(post.id);
-                            }}
-                            className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-100 rounded-md"
-                          >
-                            Delete post
-                          </button>
-                        </div>
-                      )}
-                    </div>
+                    renderPostMenu(post)
                   )}
                   
                   <p className="text-sm text-gray-500 mb-1">

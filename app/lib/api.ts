@@ -34,8 +34,9 @@ export async function fetchApi(endpoint: string, options: RequestInit = {}) {
 }
 
 // Helper function to normalize IDs for comparison
-export const normalizeId = (id: string | number): string => {
-  return id?.toString() || '';
+export const normalizeId = (id: string | number | null | undefined): string => {
+  if (id === null || id === undefined) return '';
+  return id.toString();
 };
 
 export const api = {
@@ -616,7 +617,7 @@ export const api = {
         if (chatSubscription) {
           console.log('Using existing subscription to send message');
           // Use the perform method to send the message
-          // @ts-expect-error - TypeScript doesn't know about the perform method
+          // @ts-expect-error - TypeScript doesn't know about the perform method on subscription
           chatSubscription.perform('receive', { 
             message: {
               body: content
