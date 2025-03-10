@@ -9,14 +9,31 @@ interface ChatDetailProps {
   otherUser: User;
 }
 
+// Define a custom interface for the subscription
+interface ChatSubscription {
+  identifier: string;
+  pingInterval?: NodeJS.Timeout;
+  perform: (action: string, data: any) => void;
+  sendMessage: (message: string) => void;
+  markAsRead: () => void;
+  unsubscribe: () => void;
+}
+
 export default function ChatDetail({ chatId, currentUser, otherUser }: ChatDetailProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
-  const [subscription, setSubscription] = useState<any>(null);
+  const [subscription, setSubscription] = useState<ChatSubscription | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    setTimeout(() => {
+      if (messagesEndRef.current) {
+        messagesEndRef.current.scrollIntoView({ 
+          behavior: 'auto',  // Changed from 'smooth' to 'auto' to prevent flickering
+          block: 'end'       // Ensures we scroll to the end
+        });
+      }
+    }, 50); // Reduced delay to make it more responsive
   };
 
   useEffect(() => {
@@ -37,69 +54,178 @@ export default function ChatDetail({ chatId, currentUser, otherUser }: ChatDetai
     fetchMessages();
 
     // Set up Action Cable subscription
-    const token = localStorage.getItem('authToken');
-    if (!token) return;
-
-    const consumer = getConsumer(token);
-    const sub = consumer.subscriptions.create(
-      {
-        channel: 'ChatChannel',
-        chat_id: chatId
-      },
-      {
-        connected() {
-          console.log(`Connected to chat ${chatId}`);
-        },
-        disconnected() {
-          console.log(`Disconnected from chat ${chatId}`);
-        },
-        received(data: any) {
-          console.log('Received message:', data);
-          
-          // Format the message to match our Message type
-          const messageObj: Message = {
-            id: data.id || data.message?.id,
-            content: data.message?.body || data.body || data.content || '',
-            body: data.message?.body || data.body || data.content || '',
-            user_id: data.message?.user_id || data.user_id || data.sender_id || '',
-            chat_id: chatId,
-            created_at: data.message?.created_at || data.created_at || new Date().toISOString(),
-            user: {
-              id: data.message?.user_id || data.user_id || data.sender_id || '',
-              username: (data.message?.user_id || data.user_id) === currentUser.id ? 'You' : otherUser.username
-            }
-          };
-
-          console.log('Formatted message object:', messageObj);
-          
-          setMessages(prevMessages => {
-            // Check if message already exists
-            const exists = prevMessages.some(msg => msg.id === messageObj.id);
-            if (exists) {
-              console.log('Message already exists, not adding:', messageObj.id);
-              return prevMessages;
-            }
-            console.log('Adding new message:', messageObj);
-            return [...prevMessages, messageObj];
-          });
-          scrollToBottom();
-        }
+    console.log('Setting up WebSocket connection for chat:', chatId);
+    
+    const setupChatSubscription = () => {
+      const consumer = getConsumer();
+      
+      if (!consumer) {
+        console.error('Failed to get WebSocket consumer');
+        return null;
       }
-    );
+      
+      // Create a new subscription for this chat with type casting
+      const sub = consumer.subscriptions.create(
+        {
+          channel: 'ChatChannel',
+          chat_id: chatId
+        },
+        {
+          connected() {
+            console.log(`Connected to chat ${chatId} via WebSocket`);
+            
+            // Set up client-side ping every 4 minutes (slightly less than server's 5 minutes)
+            (this as any).pingInterval = setInterval(() => {
+              console.log('Sending ping to keep connection alive');
+              (this as any).perform('receive', { type: 'ping' });
+            }, 4 * 60 * 1000);
+          },
+          
+          disconnected() {
+            console.log(`Disconnected from chat ${chatId}`);
+            if ((this as any).pingInterval) {
+              clearInterval((this as any).pingInterval);
+            }
+          },
+          
+          received(data: any) {
+            console.log('Received WebSocket message:', data);
+            
+            // Handle different message types
+            if (data.type === 'ping' || data.type === 'pong' || data.type === 'connected') {
+              console.log(`Connection status: ${data.message || data.type}`);
+              return;
+            }
+            
+            // Check if this is a message or some other type of data
+            if (!data || (!data.message && !data.body && !data.content)) {
+              console.log('Received non-message data, ignoring:', data);
+              return;
+            }
+            
+            // Extract the actual message content
+            let messageContent = '';
+            
+            // Handle Ruby-style hash format: {"body"=>"message text"}
+            if (typeof data === 'string' && data.includes('"body"=>')) {
+              const match = data.match(/"body"=>"([^"]*)"/);
+              if (match && match[1]) {
+                messageContent = match[1];
+              }
+            } else if (typeof data.message === 'string' && data.message.includes('"body"=>')) {
+              const match = data.message.match(/"body"=>"([^"]*)"/);
+              if (match && match[1]) {
+                messageContent = match[1];
+              }
+            } else {
+              // Regular format
+              messageContent = data.message?.body || data.body || data.content || '';
+            }
+            
+            // Format the message to match our Message type
+            const messageObj: Message = {
+              id: data.id || data.message?.id || `ws-${Date.now()}`,
+              content: messageContent,
+              body: messageContent,
+              user_id: data.message?.user_id || data.user_id || data.sender_id || '',
+              chat_id: chatId,
+              created_at: data.message?.created_at || data.created_at || new Date().toISOString(),
+              user: {
+                id: data.message?.user_id || data.user_id || data.sender_id || '',
+                username: (data.message?.user_id || data.user_id || data.sender_id) === currentUser.id 
+                  ? currentUser.username 
+                  : otherUser.username
+              }
+            };
 
-    setSubscription(sub);
+            console.log('Formatted WebSocket message:', messageObj);
+            
+            // Check if this is our own message that we already added optimistically
+            setMessages(prevMessages => {
+              // First check if we already have this exact message ID
+              const exactMatch = prevMessages.some(msg => msg.id === messageObj.id);
+              if (exactMatch) {
+                console.log('Message with exact ID already exists, not adding:', messageObj.id);
+                return prevMessages;
+              }
+              
+              // Then check for a temporary message with the same content and user
+              const tempMatch = prevMessages.find(msg => 
+                msg.id.startsWith('temp-') && 
+                msg.user_id === messageObj.user_id && 
+                (msg.content === messageObj.content || msg.body === messageObj.body)
+              );
+              
+              if (tempMatch) {
+                console.log('Found matching temp message, replacing:', tempMatch.id, 'with', messageObj.id);
+                return prevMessages.map(msg => 
+                  msg.id === tempMatch.id ? messageObj : msg
+                );
+              }
+              
+              // If no match found, add as a new message
+              console.log('Adding new message from WebSocket:', messageObj);
+              return [...prevMessages, messageObj];
+            });
+            
+            scrollToBottom();
+          },
+          
+          // Send a message
+          sendMessage(message: string) {
+            console.log('Sending message via WebSocket:', message);
+            (this as any).perform('receive', { 
+              command: 'message',
+              chat_id: chatId,
+              message: {
+                body: message
+              }
+            });
+          },
+          
+          // Mark messages as read
+          markAsRead() {
+            (this as any).perform('mark_as_read');
+          }
+        }
+      ) as unknown as ChatSubscription;
+      
+      return sub;
+    };
+    
+    const subscription = setupChatSubscription();
+    setSubscription(subscription);
+    
+    console.log('WebSocket subscription created for chat:', chatId);
 
     // Cleanup subscription on unmount
     return () => {
-      if (sub) {
-        sub.unsubscribe();
+      if (subscription) {
+        console.log('Cleaning up WebSocket subscription for chat:', chatId);
+        if (subscription.pingInterval) {
+          clearInterval(subscription.pingInterval);
+        }
+        subscription.unsubscribe();
       }
     };
-  }, [chatId, currentUser.id, otherUser.username]);
+  }, [chatId, currentUser.id, otherUser.username, currentUser.username]);
+
+  // Scroll to bottom when messages change
+  useEffect(() => {
+    // Only scroll if there are messages
+    if (messages.length > 0) {
+      // Use requestAnimationFrame to ensure we scroll after the render is complete
+      requestAnimationFrame(() => {
+        scrollToBottom();
+      });
+    }
+  }, [messages]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newMessage.trim()) return;
+
+    console.log('Attempting to send message:', newMessage);
 
     try {
       // Create optimistic message
@@ -112,35 +238,27 @@ export default function ChatDetail({ chatId, currentUser, otherUser }: ChatDetai
         created_at: new Date().toISOString(),
         user: {
           id: currentUser.id,
-          username: 'You'
+          username: currentUser.username
         }
       };
+
+      console.log('Created optimistic message:', tempMessage);
 
       // Add optimistic message to UI
       setMessages(prev => [...prev, tempMessage]);
       scrollToBottom();
 
       // Send message to the server
-      const response = await api.sendChatMessage(chatId, newMessage);
-      console.log("Message sent response:", response);
-
-      // Update the temporary message with the real one if we got a response
-      if (response && response.id) {
-        setMessages(prev => 
-          prev.map(msg => 
-            msg.id === tempMessage.id 
-              ? {
-                  ...msg,
-                  id: response.id,
-                  content: response.body || newMessage,
-                  body: response.body || newMessage,
-                  created_at: response.created_at || msg.created_at
-                }
-              : msg
-          )
-        );
-      }
+      console.log('Sending message to server via WebSocket...');
       
+      if (subscription) {
+        // Use the subscription directly if available
+        subscription.sendMessage(newMessage);
+      } else {
+        // Fall back to the API method if subscription is not available
+        await api.sendChatMessage(chatId, newMessage);
+      }
+
       // Clear input
       setNewMessage('');
     } catch (error) {
@@ -172,7 +290,7 @@ export default function ChatDetail({ chatId, currentUser, otherUser }: ChatDetai
       </div>
 
       {/* Messages area */}
-      <div className="flex-1 overflow-y-auto p-4">
+      <div className="flex-1 overflow-y-auto p-4 scroll-smooth" style={{ height: 'calc(100vh - 180px)' }}>
         {messages.map((message) => (
           <div
             key={message.id}
@@ -187,13 +305,15 @@ export default function ChatDetail({ chatId, currentUser, otherUser }: ChatDetai
                   : 'bg-gray-200 text-gray-900'
               }`}
             >
-              <p>{message.content || message.body}</p>
+              <p>{message.content && message.content.includes('"body"=>') 
+                ? message.content.match(/"body"=>"([^"]*)"/)![1] 
+                : (message.content || message.body)}</p>
               <small className={`text-xs ${
                 message.user_id === currentUser.id
-                  ? 'opacity-75'
+                  ? 'opacity-70'
                   : 'text-gray-600'
               }`}>
-                {new Date(message.created_at).toLocaleTimeString()}
+                {new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
               </small>
             </div>
           </div>

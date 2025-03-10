@@ -1,41 +1,49 @@
-import { createConsumer } from '@rails/actioncable';
+import { createConsumer, Consumer } from '@rails/actioncable';
 
-let consumer: any = null;
+// Define custom interface to extend Consumer with connection properties
+interface ExtendedConsumer extends Consumer {
+  connection: {
+    isOpen: () => boolean;
+    send: (data: any) => void;
+    onopen: () => void;
+    onclose: (event: { code: number; reason: string }) => void;
+    onerror: (error: Error) => void;
+  };
+}
 
-export const getConsumer = (token: string) => {
+let consumer: ExtendedConsumer | null = null;
+
+export const getConsumer = (): ExtendedConsumer | null => {
   if (!consumer) {
-    // Get the base URL from environment or use a default
-    const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'localhost:3000';
+    const token = localStorage.getItem('authToken');
     
-    // Use the exact WebSocket URL format that matches the server configuration
-    // For production: wss://ivyruby-production.up.railway.app/cable
-    const wsUrl = baseUrl.includes('localhost') 
-      ? `ws://localhost:3000/cable?token=${token}` 
+    if (!token) {
+      console.error('No auth token found for WebSocket connection');
+      return null;
+    }
+    
+    const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'localhost:3000';
+    const wsUrl = baseUrl.includes('localhost')
+      ? `ws://localhost:3000/cable?token=${token}`
       : `wss://ivyruby-production.up.railway.app/cable?token=${token}`;
     
-    console.log("Connecting to WebSocket URL:", wsUrl);
-    consumer = createConsumer(wsUrl);
+    console.log('Connecting to WebSocket URL:', wsUrl);
     
-    // Add event listeners for connection status
-    const wsConnection = (consumer as any).connection.webSocket;
-    if (wsConnection) {
-      wsConnection.addEventListener('open', () => {
-        console.log('WebSocket connection established');
-      });
-      
-      wsConnection.addEventListener('close', (event: any) => {
-        console.log(`WebSocket connection closed: ${event.code} ${event.reason}`);
-      });
-      
-      wsConnection.addEventListener('error', (error: any) => {
-        console.error('WebSocket error:', error);
-      });
-    }
+    consumer = createConsumer(wsUrl) as ExtendedConsumer;
+    
+    // Add reconnection handling
+    consumer.connection.onclose = () => {
+      console.log('WebSocket connection closed, attempting to reconnect...');
+      setTimeout(() => {
+        consumer = null;
+        getConsumer();
+      }, 3000);
+    };
   }
   return consumer;
 };
 
-// Define a more flexible message type for WebSocket data
+// Export other functions and interfaces
 export interface WebSocketMessage {
   id: string;
   content: string;
@@ -63,67 +71,9 @@ export interface ChatMessageData {
   message: WebSocketMessage;
 }
 
-export const subscribeToMessages = (
-  currentUserId: string, 
-  receiverId: string, 
-  token: string, 
-  onReceived: (data: MessageData) => void
-) => {
-  const consumer = getConsumer(token);
-  
-  return consumer.subscriptions.create(
-    {
-      channel: 'MessagesChannel',
-      user_id: currentUserId,
-      receiver_id: receiverId
-    },
-    {
-      connected() {
-        console.log(`Connected to messages with user ${receiverId}`);
-      },
-      disconnected() {
-        console.log(`Disconnected from messages with user ${receiverId}`);
-      },
-      received(data: MessageData) {
-        console.log('Received message:', data);
-        onReceived(data);
-      }
-    }
-  );
-};
-
-export const subscribeToChatChannel = (
-  chatId: string,
-  token: string,
-  onReceived: (data: any) => void
-) => {
-  const consumer = getConsumer(token);
-  
-  console.log(`Subscribing to chat channel: chat_${chatId}`);
-  
-  return consumer.subscriptions.create(
-    {
-      channel: 'ChatChannel',
-      id: chatId,
-      chat_id: chatId
-    },
-    {
-      connected() {
-        console.log(`Connected to chat ${chatId}`);
-      },
-      disconnected() {
-        console.log(`Disconnected from chat ${chatId}`);
-      },
-      received(data: any) {
-        console.log(`Received data on chat_${chatId}:`, data);
-        onReceived(data);
-      }
-    }
-  );
-};
-
 export const disconnectConsumer = () => {
   if (consumer) {
+    console.log('Manually disconnecting WebSocket consumer');
     consumer.disconnect();
     consumer = null;
   }

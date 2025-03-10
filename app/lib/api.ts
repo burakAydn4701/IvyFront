@@ -546,37 +546,7 @@ export const api = {
       const payload = JSON.parse(atob(token.split('.')[1]));
       const userId = payload.user_id;
 
-      // Create a message object
-      const messageData = {
-        command: 'message',
-        chat_id: chatId,
-        message: {
-          body: content,
-          user_id: userId
-        }
-      };
-
-      console.log('Sending message data:', messageData);
-
-      // Try sending through Action Cable first
-      const consumer = getConsumer(token);
-      const channel = consumer.subscriptions.create(
-        {
-          channel: 'ChatChannel',
-          chat_id: chatId
-        },
-        {
-          connected() {
-            console.log('Connected to chat channel for sending message');
-            this.send(messageData);
-          },
-          received(data: any) {
-            console.log('Received response after sending:', data);
-          }
-        }
-      );
-
-      // Create an optimistic response
+      // Create an optimistic response for immediate UI feedback
       const optimisticResponse = {
         id: `temp-${Date.now()}`,
         body: content,
@@ -586,6 +556,70 @@ export const api = {
         created_at: new Date().toISOString(),
         is_mine: true
       };
+
+      console.log('Created optimistic response:', optimisticResponse);
+
+      // Get the consumer
+      const consumer = getConsumer();
+      
+      if (consumer) {
+        // Find existing subscription or create a new one
+        // @ts-ignore - TypeScript doesn't know about the subscriptions property
+        const subscriptions = consumer.subscriptions.subscriptions || [];
+        let chatSubscription = null;
+        
+        // Find the subscription for this chat
+        for (const sub of subscriptions) {
+          try {
+            const identifier = JSON.parse(sub.identifier);
+            if (identifier.channel === 'ChatChannel' && identifier.chat_id === chatId) {
+              chatSubscription = sub;
+              break;
+            }
+          } catch (e) {
+            console.error('Error parsing subscription identifier:', e);
+          }
+        }
+        
+        if (chatSubscription) {
+          console.log('Using existing subscription to send message');
+          // Use the perform method to send the message
+          // @ts-ignore - TypeScript doesn't know about the perform method
+          chatSubscription.perform('receive', { 
+            message: {
+              body: content
+            }
+          });
+        } else {
+          console.log('No existing subscription found, creating a new one');
+          // Create a new subscription
+          consumer.subscriptions.create(
+            {
+              channel: 'ChatChannel',
+              chat_id: chatId
+            },
+            {
+              connected() {
+                console.log(`Temporary subscription connected, sending message`);
+                // @ts-ignore - TypeScript doesn't know about the perform method
+                this.perform('receive', { 
+                  message: {
+                    body: content
+                  }
+                });
+              },
+              disconnected() {
+                console.log('Temporary subscription disconnected');
+              },
+              received(data: any) {
+                console.log('Received response on temporary subscription:', data);
+              }
+            }
+          );
+        }
+      } else {
+        console.error('Failed to get WebSocket consumer');
+      }
 
       // Return the optimistic response immediately
       return optimisticResponse;
