@@ -49,21 +49,18 @@ export default function ChatDetail({ chatId, currentUser, otherUser }: ChatDetai
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [subscription, setSubscription] = useState<ChatSubscription | null>(null);
+  const [isConnected, setIsConnected] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messageListRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
-    setTimeout(() => {
-      if (messagesEndRef.current) {
-        messagesEndRef.current.scrollIntoView({ 
-          behavior: 'auto',  // Changed from 'smooth' to 'auto' to prevent flickering
-          block: 'end'       // Ensures we scroll to the end
-        });
-      }
-    }, 50); // Reduced delay to make it more responsive
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
   useEffect(() => {
-    // Initial messages load
+    console.log(`Setting up chat detail for chat ${chatId} with ${otherUser.username}`);
+    
+    // Fetch messages
     const fetchMessages = async () => {
       try {
         const chatData = await api.getChat(chatId);
@@ -99,6 +96,7 @@ export default function ChatDetail({ chatId, currentUser, otherUser }: ChatDetai
         {
           connected() {
             console.log(`Connected to chat ${chatId} via WebSocket`);
+            setIsConnected(true);
             
             // Set up client-side ping every 4 minutes (slightly less than server's 5 minutes)
             (this as ChatSubscription).pingInterval = setInterval(() => {
@@ -109,9 +107,19 @@ export default function ChatDetail({ chatId, currentUser, otherUser }: ChatDetai
           
           disconnected() {
             console.log(`Disconnected from chat ${chatId}`);
+            setIsConnected(false);
             if ((this as ChatSubscription).pingInterval) {
               clearInterval((this as ChatSubscription).pingInterval);
             }
+            
+            // Try to reconnect after a short delay
+            setTimeout(() => {
+              console.log('Attempting to reconnect WebSocket...');
+              const newSub = setupChatSubscription();
+              if (newSub) {
+                setSubscription(newSub as ChatSubscription);
+              }
+            }, 3000);
           },
           
           received(data: WebSocketMessage) {
@@ -161,22 +169,22 @@ export default function ChatDetail({ chatId, currentUser, otherUser }: ChatDetai
             
             // Format the message to match our Message type
             const messageObj: Message = {
-              id: typeof data === 'object' && 'id' in data ? data.id : 
-                  typeof data === 'object' && 'message' in data && data.message?.id ? data.message.id : 
+              id: typeof data === 'object' && 'id' in data ? (data.id || `ws-${Date.now()}`) : 
+                  typeof data === 'object' && 'message' in data && data.message?.id ? (data.message.id || `ws-${Date.now()}`) : 
                   `ws-${Date.now()}`,
               content: messageContent,
               body: messageContent,
-              user_id: typeof data === 'object' && 'user_id' in data ? data.user_id : 
-                      typeof data === 'object' && 'message' in data && data.message?.user_id ? data.message.user_id : 
-                      typeof data === 'object' && 'sender_id' in data ? data.sender_id : '',
+              user_id: typeof data === 'object' && 'user_id' in data ? (data.user_id || '') : 
+                      typeof data === 'object' && 'message' in data && data.message?.user_id ? (data.message.user_id || '') : 
+                      typeof data === 'object' && 'sender_id' in data ? (data.sender_id || '') : '',
               chat_id: chatId,
-              created_at: typeof data === 'object' && 'created_at' in data ? data.created_at : 
-                          typeof data === 'object' && 'message' in data && data.message?.created_at ? data.message.created_at : 
+              created_at: typeof data === 'object' && 'created_at' in data ? (data.created_at || new Date().toISOString()) : 
+                          typeof data === 'object' && 'message' in data && data.message?.created_at ? (data.message.created_at || new Date().toISOString()) : 
                           new Date().toISOString(),
               user: {
-                id: typeof data === 'object' && 'user_id' in data ? data.user_id : 
-                    typeof data === 'object' && 'message' in data && data.message?.user_id ? data.message.user_id : 
-                    typeof data === 'object' && 'sender_id' in data ? data.sender_id : '',
+                id: typeof data === 'object' && 'user_id' in data ? (data.user_id || '') : 
+                    typeof data === 'object' && 'message' in data && data.message?.user_id ? (data.message.user_id || '') : 
+                    typeof data === 'object' && 'sender_id' in data ? (data.sender_id || '') : '',
                 username: typeof data === 'object' && 
                           ((('user_id' in data && data.user_id === currentUser.id) || 
                             ('message' in data && data.message?.user_id === currentUser.id) || 
@@ -185,48 +193,42 @@ export default function ChatDetail({ chatId, currentUser, otherUser }: ChatDetai
                           : otherUser.username
               }
             };
-
-            console.log('Formatted WebSocket message:', messageObj);
             
-            // Check if this is our own message that we already added optimistically
-            setMessages(prevMessages => {
-              // First check if we already have this exact message ID
-              const exactMatch = prevMessages.some(msg => msg.id === messageObj.id);
-              if (exactMatch) {
-                console.log('Message with exact ID already exists, not adding:', messageObj.id);
-                return prevMessages;
-              }
-              
-              // Then check for a temporary message with the same content and user
-              const tempMatch = prevMessages.find(msg => 
-                msg.id.startsWith('temp-') && 
-                msg.user_id === messageObj.user_id && 
-                (msg.content === messageObj.content || msg.body === messageObj.body)
-              );
-              
-              if (tempMatch) {
-                console.log('Found matching temp message, replacing:', tempMatch.id, 'with', messageObj.id);
-                return prevMessages.map(msg => 
-                  msg.id === tempMatch.id ? messageObj : msg
-                );
-              }
-              
-              // If no match found, add as a new message
-              console.log('Adding new message from WebSocket:', messageObj);
-              return [...prevMessages, messageObj];
-            });
+            console.log('Formatted message object:', messageObj);
             
-            scrollToBottom();
+            // Check if we already have this message (by ID)
+            const messageExists = messages.some(m => m.id === messageObj.id);
+            
+            if (!messageExists) {
+              console.log('Adding new message to state:', messageObj);
+              setMessages(prev => [...prev, messageObj]);
+              scrollToBottom();
+            } else {
+              console.log('Message already exists, not adding:', messageObj.id);
+            }
           },
           
           // Send a message
           sendMessage(message: string) {
             console.log(`Sending message to chat ${chatId}: ${message}`);
-            (this as ChatSubscription).perform('receive', { 
-              message: {
-                body: message
-              }
-            });
+            
+            try {
+              (this as ChatSubscription).perform('receive', { 
+                command: 'message',
+                chat_id: chatId,
+                message: {
+                  body: message,
+                  user_id: currentUser.id
+                }
+              });
+              console.log('Message sent via WebSocket');
+            } catch (error) {
+              console.error('Error sending message via WebSocket:', error);
+              // Fall back to API if WebSocket fails
+              api.sendChatMessage(chatId, message)
+                .then(response => console.log('Message sent via API fallback:', response))
+                .catch(err => console.error('API fallback also failed:', err));
+            }
           },
           
           // Mark messages as read
@@ -240,22 +242,24 @@ export default function ChatDetail({ chatId, currentUser, otherUser }: ChatDetai
       return sub;
     };
     
-    const subscription = setupChatSubscription();
-    setSubscription(subscription);
+    const sub = setupChatSubscription();
+    if (sub) {
+      setSubscription(sub);
+    }
     
-    console.log('WebSocket subscription created for chat:', chatId);
-
-    // Cleanup subscription on unmount
+    // Cleanup function
     return () => {
+      console.log(`Cleaning up chat ${chatId} subscription`);
       if (subscription) {
-        console.log('Cleaning up WebSocket subscription for chat:', chatId);
+        console.log('Unsubscribing from chat channel');
         if (subscription.pingInterval) {
           clearInterval(subscription.pingInterval);
         }
         subscription.unsubscribe();
+        setSubscription(null);
       }
     };
-  }, [chatId, currentUser.id, otherUser.username, currentUser.username]);
+  }, [chatId, otherUser.username]);
 
   // Scroll to bottom when messages change
   useEffect(() => {
@@ -295,22 +299,24 @@ export default function ChatDetail({ chatId, currentUser, otherUser }: ChatDetai
       setMessages(prev => [...prev, tempMessage]);
       scrollToBottom();
 
+      // Clear input immediately for better UX
+      setNewMessage('');
+
       // Send message to the server
       console.log('Sending message to server via WebSocket...');
       
-      if (subscription) {
-        // Use the subscription directly if available
+      if (subscription && isConnected) {
+        // Use the subscription directly if available and connected
         subscription.sendMessage(newMessage);
       } else {
-        // Fall back to the API method if subscription is not available
+        // Fall back to the API method if subscription is not available or not connected
+        console.log('WebSocket not connected, falling back to API...');
         await api.sendChatMessage(chatId, newMessage);
       }
-
-      // Clear input
-      setNewMessage('');
     } catch (error) {
       console.error('Error sending message:', error);
       // Keep the optimistic message in the UI even if there's an error
+      // This provides better UX as the user sees their message was at least attempted
     }
   };
 
