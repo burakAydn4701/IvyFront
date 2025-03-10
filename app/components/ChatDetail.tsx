@@ -118,13 +118,17 @@ export default function ChatDetail({ chatId, currentUser, otherUser }: ChatDetai
             console.log('Received WebSocket message:', data);
             
             // Handle different message types
-            if (typeof data === 'object' && data.type === 'ping' || data.type === 'pong' || data.type === 'connected') {
-              console.log(`Connection status: ${data.message || data.type}`);
+            if (typeof data === 'object' && 'type' in data && 
+                (data.type === 'ping' || data.type === 'pong' || data.type === 'connected')) {
+              console.log(`Connection status: ${typeof data === 'object' && 'message' in data ? data.message : data.type}`);
               return;
             }
             
             // Check if this is a message or some other type of data
-            if (!data || (typeof data === 'object' && !data.message?.body && !data.body && !data.content)) {
+            if (!data || (typeof data === 'object' && 
+                !('message' in data && data.message?.body) && 
+                !('body' in data) && 
+                !('content' in data))) {
               console.log('Received non-message data, ignoring:', data);
               return;
             }
@@ -157,17 +161,28 @@ export default function ChatDetail({ chatId, currentUser, otherUser }: ChatDetai
             
             // Format the message to match our Message type
             const messageObj: Message = {
-              id: typeof data === 'object' ? (data.id || data.message?.id || `ws-${Date.now()}`) : `ws-${Date.now()}`,
+              id: typeof data === 'object' && 'id' in data ? data.id : 
+                  typeof data === 'object' && 'message' in data && data.message?.id ? data.message.id : 
+                  `ws-${Date.now()}`,
               content: messageContent,
               body: messageContent,
-              user_id: typeof data === 'object' ? (data.message?.user_id || data.user_id || data.sender_id || '') : '',
+              user_id: typeof data === 'object' && 'user_id' in data ? data.user_id : 
+                      typeof data === 'object' && 'message' in data && data.message?.user_id ? data.message.user_id : 
+                      typeof data === 'object' && 'sender_id' in data ? data.sender_id : '',
               chat_id: chatId,
-              created_at: typeof data === 'object' ? (data.message?.created_at || data.created_at || new Date().toISOString()) : new Date().toISOString(),
+              created_at: typeof data === 'object' && 'created_at' in data ? data.created_at : 
+                          typeof data === 'object' && 'message' in data && data.message?.created_at ? data.message.created_at : 
+                          new Date().toISOString(),
               user: {
-                id: typeof data === 'object' ? (data.message?.user_id || data.user_id || data.sender_id || '') : '',
-                username: typeof data === 'object' && (data.message?.user_id || data.user_id || data.sender_id) === currentUser.id 
-                  ? currentUser.username 
-                  : otherUser.username
+                id: typeof data === 'object' && 'user_id' in data ? data.user_id : 
+                    typeof data === 'object' && 'message' in data && data.message?.user_id ? data.message.user_id : 
+                    typeof data === 'object' && 'sender_id' in data ? data.sender_id : '',
+                username: typeof data === 'object' && 
+                          ((('user_id' in data && data.user_id === currentUser.id) || 
+                            ('message' in data && data.message?.user_id === currentUser.id) || 
+                            ('sender_id' in data && data.sender_id === currentUser.id))) 
+                          ? currentUser.username 
+                          : otherUser.username
               }
             };
 

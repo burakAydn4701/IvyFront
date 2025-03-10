@@ -617,8 +617,7 @@ export const api = {
         if (chatSubscription) {
           console.log('Using existing subscription to send message');
           // Use the perform method to send the message
-          // @ts-expect-error - TypeScript doesn't know about the perform method on subscription
-          chatSubscription.perform('receive', { 
+          (chatSubscription as unknown as { perform: (action: string, data: any) => void }).perform('receive', { 
             message: {
               body: content
             }

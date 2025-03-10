@@ -1,12 +1,13 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { api } from '../lib/api';
 import ChatList from '../components/ChatList';
 import ChatDetail from '../components/ChatDetail';
 import type { User, Chat } from '../types';
 
-export default function MessagesPage() {
+// Create a separate component that uses useSearchParams
+function MessagesContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const chatIdParam = searchParams.get('chatId');
@@ -133,5 +134,14 @@ export default function MessagesPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+// Main component that wraps MessagesContent in a Suspense boundary
+export default function MessagesPage() {
+  return (
+    <Suspense fallback={<div className="container mx-auto p-4">Loading messages...</div>}>
+      <MessagesContent />
+    </Suspense>
   );
 } 
