@@ -279,9 +279,10 @@ export default function ChatDetail({ chatId, currentUser, otherUser }: ChatDetai
     console.log('Attempting to send message:', newMessage);
 
     try {
-      // Create optimistic message
+      // Create optimistic message with a temporary ID
+      const tempId = `temp-${Date.now()}`;
       const tempMessage: Message = {
-        id: `temp-${Date.now()}`,
+        id: tempId,
         content: newMessage,
         body: newMessage,
         user_id: currentUser.id,
@@ -295,28 +296,32 @@ export default function ChatDetail({ chatId, currentUser, otherUser }: ChatDetai
 
       console.log('Created optimistic message:', tempMessage);
 
-      // Add optimistic message to UI
+      // Add optimistic message to UI immediately
       setMessages(prev => [...prev, tempMessage]);
-      scrollToBottom();
-
+      
       // Clear input immediately for better UX
+      const messageCopy = newMessage.trim();
       setNewMessage('');
+      
+      // Scroll to bottom
+      setTimeout(scrollToBottom, 50);
 
       // Send message to the server
-      console.log('Sending message to server via WebSocket...');
+      console.log('Sending message to server...');
       
       if (subscription && isConnected) {
-        // Use the subscription directly if available and connected
-        subscription.sendMessage(newMessage);
+        // Use the WebSocket subscription if available and connected
+        console.log('Using WebSocket to send message');
+        subscription.sendMessage(messageCopy);
       } else {
-        // Fall back to the API method if subscription is not available or not connected
-        console.log('WebSocket not connected, falling back to API...');
-        await api.sendChatMessage(chatId, newMessage);
+        // Fall back to the API method
+        console.log('WebSocket not connected, using API fallback');
+        const response = await api.sendChatMessage(chatId, messageCopy);
+        console.log('API response:', response);
       }
     } catch (error) {
       console.error('Error sending message:', error);
-      // Keep the optimistic message in the UI even if there's an error
-      // This provides better UX as the user sees their message was at least attempted
+      // The optimistic message remains in the UI even if there's an error
     }
   };
 
