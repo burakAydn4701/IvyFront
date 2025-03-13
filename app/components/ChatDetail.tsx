@@ -129,91 +129,93 @@ export default function ChatDetail({ chatId, currentUser, otherUser }: ChatDetai
           
           received(data: WebSocketMessage) {
             console.log('Received WebSocket message:', data);
-            console.log('Current connection status:', isConnected);
-            console.log('Current messages count:', messages.length);
+            
+            // Skip empty messages
+            if (!data) {
+              console.log('Received empty message, ignoring');
+              return;
+            }
             
             // Handle different message types
             if (typeof data === 'object' && 'type' in data && 
                 (data.type === 'ping' || data.type === 'pong' || data.type === 'connected')) {
-              console.log(`Connection status: ${typeof data === 'object' && 'message' in data ? data.message : data.type}`);
+              console.log(`Connection status: ${data.type}`);
               return;
             }
             
-            // Check if this is a message or some other type of data
-            if (!data || (typeof data === 'object' && 
-                !('message' in data && data.message?.body) && 
-                !('body' in data) && 
-                !('content' in data))) {
-              console.log('Received non-message data, ignoring:', data);
-              return;
-            }
-            
-            // Extract the actual message content
+            // Extract message content and metadata
             let messageContent = '';
+            let userId = '';
+            let messageId = '';
+            let createdAt = new Date().toISOString();
             
-            // Handle different message formats
             if (typeof data === 'string') {
-              // Handle Ruby-style hash format: {"body"=>"message text"}
-              if (data.includes('"body"=>')) {
-                const match = data.match(/"body"=>"([^"]*)"/);
-                if (match && match[1]) {
-                  messageContent = match[1];
-                }
-              } else {
+              try {
                 // Try to parse as JSON
-                try {
-                  const parsedData = JSON.parse(data);
-                  messageContent = parsedData.message?.body || parsedData.body || parsedData.content || '';
-                } catch (e) {
-                  // If not valid JSON, use as is
-                  messageContent = data;
-                }
+                const parsedData = JSON.parse(data);
+                messageContent = parsedData.body || '';
+                userId = parsedData.user?.id || '';
+                messageId = parsedData.id || `ws-${Date.now()}`;
+                createdAt = parsedData.created_at || createdAt;
+              } catch (e) {
+                // If not valid JSON, use as is
+                messageContent = data;
+                userId = currentUser.id; // Default to current user
+                messageId = `ws-${Date.now()}`;
               }
-            } else {
-              // Regular object format
-              messageContent = data.message?.body || data.body || data.content || '';
+            } else if (typeof data === 'object') {
+              // Direct object format from Rails backend
+              messageContent = data.body || '';
+              userId = data.user?.id || '';
+              messageId = data.id || `ws-${Date.now()}`;
+              createdAt = data.created_at || createdAt;
             }
+            
+            if (!messageContent) {
+              console.log('No message content found, ignoring:', data);
+              return;
+            }
+            
+            console.log('Extracted message data:', { 
+              content: messageContent, 
+              userId, 
+              messageId, 
+              createdAt 
+            });
             
             // Format the message to match our Message type
             const messageObj: Message = {
-              id: typeof data === 'object' && 'id' in data ? (data.id || `ws-${Date.now()}`) : 
-                  typeof data === 'object' && 'message' in data && data.message?.id ? (data.message.id || `ws-${Date.now()}`) : 
-                  `ws-${Date.now()}`,
+              id: messageId,
               content: messageContent,
               body: messageContent,
-              user_id: typeof data === 'object' && 'user_id' in data ? (data.user_id || '') : 
-                      typeof data === 'object' && 'message' in data && data.message?.user_id ? (data.message.user_id || '') : 
-                      typeof data === 'object' && 'sender_id' in data ? (data.sender_id || '') : '',
+              user_id: userId,
               chat_id: chatId,
-              created_at: typeof data === 'object' && 'created_at' in data ? (data.created_at || new Date().toISOString()) : 
-                          typeof data === 'object' && 'message' in data && data.message?.created_at ? (data.message.created_at || new Date().toISOString()) : 
-                          new Date().toISOString(),
+              created_at: createdAt,
               user: {
-                id: typeof data === 'object' && 'user_id' in data ? (data.user_id || '') : 
-                    typeof data === 'object' && 'message' in data && data.message?.user_id ? (data.message.user_id || '') : 
-                    typeof data === 'object' && 'sender_id' in data ? (data.sender_id || '') : '',
-                username: typeof data === 'object' && 
-                          ((('user_id' in data && data.user_id === currentUser.id) || 
-                            ('message' in data && data.message?.user_id === currentUser.id) || 
-                            ('sender_id' in data && data.sender_id === currentUser.id))) 
-                          ? currentUser.username 
-                          : otherUser.username
+                id: userId,
+                username: userId === currentUser.id ? currentUser.username : otherUser.username
               }
             };
             
             console.log('Formatted message object:', messageObj);
             
-            // Check if we already have this message (by ID)
-            const messageExists = messages.some(m => m.id === messageObj.id);
-            
-            if (!messageExists) {
-              console.log('Adding new message to state:', messageObj);
-              // Update state by appending the new message to the existing messages
-              setMessages(prevMessages => [...prevMessages, messageObj]);
-              scrollToBottom();
-            } else {
-              console.log('Message already exists, not adding:', messageObj.id);
-            }
+            // IMPORTANT: Use a callback function to get the latest messages state
+            setMessages(prevMessages => {
+              // Check if we already have this message (by ID)
+              const messageExists = prevMessages.some(m => m.id === messageObj.id);
+              
+              if (!messageExists) {
+                console.log('Adding new message to state');
+                // Create a new array with the new message
+                const newMessages = [...prevMessages, messageObj];
+                // Schedule scrolling after state update
+                setTimeout(scrollToBottom, 50);
+                return newMessages;
+              } else {
+                console.log('Message already exists, not adding');
+                return prevMessages;
+              }
+            });
           },
           
           // Send a message
