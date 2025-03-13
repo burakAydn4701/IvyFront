@@ -71,8 +71,17 @@ export default function Navbar() {
         <div className="flex justify-between h-16">
           {/* Left Section - Logo Only */}
           <div className="flex items-center">
-            <Link href="/" className="text-2xl font-bold text-green-600">
-              IvyLeagueTr
+            <Link href="/" className="flex items-center gap-2">
+              <Image
+                src="/icon.png"
+                alt="IvyLeagueTr Logo"
+                width={32}
+                height={32}
+                className="object-contain"
+              />
+              <span className="text-2xl font-bold text-green-600">
+                IvyLeagueTr
+              </span>
             </Link>
           </div>
 
