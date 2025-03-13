@@ -98,7 +98,7 @@ export default function ChatDetail({ chatId, currentUser, otherUser }: ChatDetai
             console.log(`Connected to chat ${chatId} via WebSocket`);
             setIsConnected(true);
             
-            // Set up client-side ping every 4 minutes (slightly less than server's 5 minutes)
+            // Set up client-side ping every 4 minutes
             (this as ChatSubscription).pingInterval = setInterval(() => {
               console.log('Sending ping to keep connection alive');
               (this as ChatSubscription).perform('receive', { type: 'ping' });
@@ -122,99 +122,12 @@ export default function ChatDetail({ chatId, currentUser, otherUser }: ChatDetai
             }, 3000);
           },
           
-          received(data: WebSocketMessage) {
-            console.log('Received WebSocket message:', data);
-            
-            // Handle different message types
-            if (typeof data === 'object' && 'type' in data && 
-                (data.type === 'ping' || data.type === 'pong' || data.type === 'connected')) {
-              console.log(`Connection status: ${typeof data === 'object' && 'message' in data ? data.message : data.type}`);
-              return;
-            }
-            
-            // Check if this is a message or some other type of data
-            if (!data || (typeof data === 'object' && 
-                !('message' in data && data.message?.body) && 
-                !('body' in data) && 
-                !('content' in data))) {
-              console.log('Received non-message data, ignoring:', data);
-              return;
-            }
-            
-            // Extract the actual message content
-            let messageContent = '';
-            
-            // Handle different message formats
-            if (typeof data === 'string') {
-              // Handle Ruby-style hash format: {"body"=>"message text"}
-              if (data.includes('"body"=>')) {
-                const match = data.match(/"body"=>"([^"]*)"/);
-                if (match && match[1]) {
-                  messageContent = match[1];
-                }
-              } else {
-                // Try to parse as JSON
-                try {
-                  const parsedData = JSON.parse(data);
-                  messageContent = parsedData.message?.body || parsedData.body || parsedData.content || '';
-                } catch (e) {
-                  // If not valid JSON, use as is
-                  messageContent = data;
-                }
-              }
-            } else {
-              // Regular object format
-              messageContent = data.message?.body || data.body || data.content || '';
-            }
-            
-            // Format the message to match our Message type
-            const messageObj: Message = {
-              id: typeof data === 'object' && 'id' in data ? (data.id || `ws-${Date.now()}`) : 
-                  typeof data === 'object' && 'message' in data && data.message?.id ? (data.message.id || `ws-${Date.now()}`) : 
-                  `ws-${Date.now()}`,
-              content: messageContent,
-              body: messageContent,
-              user_id: typeof data === 'object' && 'user_id' in data ? (data.user_id || '') : 
-                      typeof data === 'object' && 'message' in data && data.message?.user_id ? (data.message.user_id || '') : 
-                      typeof data === 'object' && 'sender_id' in data ? (data.sender_id || '') : '',
-              chat_id: chatId,
-              created_at: typeof data === 'object' && 'created_at' in data ? (data.created_at || new Date().toISOString()) : 
-                          typeof data === 'object' && 'message' in data && data.message?.created_at ? (data.message.created_at || new Date().toISOString()) : 
-                          new Date().toISOString(),
-              user: {
-                id: typeof data === 'object' && 'user_id' in data ? (data.user_id || '') : 
-                    typeof data === 'object' && 'message' in data && data.message?.user_id ? (data.message.user_id || '') : 
-                    typeof data === 'object' && 'sender_id' in data ? (data.sender_id || '') : '',
-                username: typeof data === 'object' && 
-                          ((('user_id' in data && data.user_id === currentUser.id) || 
-                            ('message' in data && data.message?.user_id === currentUser.id) || 
-                            ('sender_id' in data && data.sender_id === currentUser.id))) 
-                          ? currentUser.username 
-                          : otherUser.username
-              }
-            };
-            
-            console.log('Formatted message object:', messageObj);
-            
-            // Check if we already have this message (by ID)
-            const messageExists = messages.some(m => m.id === messageObj.id);
-            
-            if (!messageExists) {
-              console.log('Adding new message to state:', messageObj);
-              setMessages(prev => [...prev, messageObj]);
-              scrollToBottom();
-            } else {
-              console.log('Message already exists, not adding:', messageObj.id);
-            }
-          },
-          
           // Send a message
           sendMessage(message: string) {
             console.log(`Sending message to chat ${chatId}: ${message}`);
             
             try {
-              (this as ChatSubscription).perform('receive', { 
-                command: 'message',
+              (this as ChatSubscription).perform('speak', { 
                 chat_id: chatId,
                 message: {
                   body: message,
@@ -231,10 +144,71 @@ export default function ChatDetail({ chatId, currentUser, otherUser }: ChatDetai
             }
           },
           
-          // Mark messages as read
-          markAsRead() {
-            console.log(`Marking chat ${chatId} as read`);
-            (this as ChatSubscription).perform('mark_as_read', {});
+          received(data: WebSocketMessage) {
+            console.log('Received WebSocket message:', data);
+            
+            // Handle different message types
+            if (typeof data === 'object' && 'type' in data && 
+                (data.type === 'ping' || data.type === 'pong' || data.type === 'connected')) {
+              console.log(`Connection status: ${data.type}`);
+              return;
+            }
+            
+            // Extract message content
+            let messageContent = '';
+            let userId = '';
+            let messageId = '';
+            let createdAt = new Date().toISOString();
+            
+            if (typeof data === 'string') {
+              try {
+                const parsedData = JSON.parse(data);
+                messageContent = parsedData.message?.body || parsedData.body || '';
+                userId = parsedData.user_id || parsedData.sender_id || '';
+                messageId = parsedData.id || `ws-${Date.now()}`;
+                createdAt = parsedData.created_at || createdAt;
+              } catch (e) {
+                messageContent = data;
+                userId = currentUser.id;
+                messageId = `ws-${Date.now()}`;
+              }
+            } else if (typeof data === 'object') {
+              messageContent = data.message?.body || data.body || data.content || '';
+              userId = data.user_id || data.sender_id || data.message?.user_id || '';
+              messageId = data.id || data.message?.id || `ws-${Date.now()}`;
+              createdAt = data.created_at || data.message?.created_at || createdAt;
+            }
+            
+            if (!messageContent) {
+              console.log('No message content found:', data);
+              return;
+            }
+            
+            const messageObj: Message = {
+              id: messageId,
+              content: messageContent,
+              body: messageContent,
+              user_id: userId,
+              chat_id: chatId,
+              created_at: createdAt,
+              user: {
+                id: userId,
+                username: userId === currentUser.id ? currentUser.username : otherUser.username
+              }
+            };
+            
+            console.log('Formatted message object:', messageObj);
+            
+            // Check if we already have this message
+            const messageExists = messages.some(m => m.id === messageObj.id);
+            
+            if (!messageExists) {
+              console.log('Adding new message to state');
+              setMessages(prevMessages => [...prevMessages, messageObj]);
+              scrollToBottom();
+            } else {
+              console.log('Message already exists, not adding');
+            }
           }
         }
       ) as unknown as ChatSubscription;
