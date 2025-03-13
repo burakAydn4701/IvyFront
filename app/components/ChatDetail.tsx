@@ -219,12 +219,7 @@ export default function ChatDetail({ chatId, currentUser, otherUser }: ChatDetai
             
             try {
               (this as ChatSubscription).perform('receive', { 
-                command: 'message',
-                chat_id: chatId,
-                message: {
-                  body: message,
-                  user_id: currentUser.id
-                }
+                message: message  // Simplified to match backend expectation
               });
               console.log('Message sent via WebSocket');
             } catch (error) {
