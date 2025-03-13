@@ -53,6 +53,11 @@ export default function ChatDetail({ chatId, currentUser, otherUser }: ChatDetai
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messageListRef = useRef<HTMLDivElement>(null);
 
+  // Add useEffect to monitor connection status changes
+  useEffect(() => {
+    console.log('Connection status changed:', isConnected);
+  }, [isConnected]);
+
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
@@ -97,7 +102,6 @@ export default function ChatDetail({ chatId, currentUser, otherUser }: ChatDetai
           connected() {
             console.log(`Connected to chat ${chatId} via WebSocket`);
             setIsConnected(true);
-            console.log('WebSocket connection status:', isConnected);
             
             // Set up client-side ping every 4 minutes (slightly less than server's 5 minutes)
             (this as ChatSubscription).pingInterval = setInterval(() => {
@@ -108,7 +112,6 @@ export default function ChatDetail({ chatId, currentUser, otherUser }: ChatDetai
           
           disconnected() {
             console.log(`Disconnected from chat ${chatId}`);
-            console.log('Previous connection status:', isConnected);
             setIsConnected(false);
             if ((this as ChatSubscription).pingInterval) {
               clearInterval((this as ChatSubscription).pingInterval);
@@ -218,6 +221,7 @@ export default function ChatDetail({ chatId, currentUser, otherUser }: ChatDetai
             console.log(`Sending message to chat ${chatId}: ${message}`);
             
             try {
+              // First try with the simplified format
               (this as ChatSubscription).perform('receive', { 
                 message: message  // Simplified to match backend expectation
               });
@@ -277,6 +281,7 @@ export default function ChatDetail({ chatId, currentUser, otherUser }: ChatDetai
     if (!newMessage.trim()) return;
 
     console.log('Attempting to send message:', newMessage);
+    console.log('Current connection status:', isConnected);
 
     try {
       // Create optimistic message with a temporary ID
@@ -309,13 +314,13 @@ export default function ChatDetail({ chatId, currentUser, otherUser }: ChatDetai
       // Send message to the server
       console.log('Sending message to server...');
       
-      if (subscription && isConnected) {
-        // Use the WebSocket subscription if available and connected
+      if (subscription) {
+        // Use the WebSocket subscription if available
         console.log('Using WebSocket to send message');
         subscription.sendMessage(messageCopy);
       } else {
         // Fall back to the API method
-        console.log('WebSocket not connected, using API fallback');
+        console.log('WebSocket not available, using API fallback');
         const response = await api.sendChatMessage(chatId, messageCopy);
         console.log('API response:', response);
       }
