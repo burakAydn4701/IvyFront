@@ -16,11 +16,11 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "IvyLeagueTr",
   description: "IvyLeagueTr - Connect with fellow students",
-  icons: {
-    icon: '/favicon.ico',
-    shortcut: '/favicon.ico',
-    apple: '/favicon.ico',
-  }
+  icons: [
+    { rel: 'icon', url: '/icon.png', type: 'image/png' },
+    { rel: 'apple-touch-icon', url: '/icon.png', type: 'image/png' },
+    { rel: 'shortcut icon', url: '/icon.png', type: 'image/png' }
+  ]
 };
 
 export default function RootLayout({

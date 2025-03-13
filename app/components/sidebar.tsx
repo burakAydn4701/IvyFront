@@ -41,7 +41,7 @@ export const Sidebar = () => {
   };
 
   return (
-    <aside className="w-64 p-4 bg-slate-100 h-screen fixed top-0 left-0 mt-16 shadow-md">
+    <aside className="w-1/5 p-4 bg-slate-100 h-screen fixed top-0 left-0 mt-16 shadow-md overflow-y-auto">
       <div className="space-y-6">
         <div>
           <h2 className="text-lg font-bold text-gray-900 mb-3">Communities</h2>

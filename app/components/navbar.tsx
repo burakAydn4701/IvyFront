@@ -4,6 +4,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, useRef } from 'react';
+import { Mail } from 'lucide-react';
 import { api } from '../lib/api';
 
 export default function Navbar() {
@@ -78,58 +79,59 @@ export default function Navbar() {
           {/* Right Section */}
           <div className="flex items-center">
             {isClient && isAuthenticated ? (
-              <div className="relative" ref={dropdownRef}>
-                {/* Profile Picture */}
-                <div 
-                  className="w-10 h-10 rounded-full overflow-hidden border-2 border-green-500 cursor-pointer"
-                  onClick={toggleDropdown}
+              <>
+                <Link 
+                  href="/messages" 
+                  className="mr-6 text-gray-700 hover:text-green-600"
                 >
-                  {user?.profile_photo_url ? (
-                    <Image
-                      src={user.profile_photo_url}
-                      alt="Profile"
-                      width={40}
-                      height={40}
-                      className="object-cover"
-                    />
-                  ) : (
-                    <div className="w-full h-full bg-gray-200 flex items-center justify-center">
-                      <span className="text-gray-500 text-sm font-bold">
-                        {user?.username?.charAt(0)?.toUpperCase() || 'U'}
-                      </span>
+                  <Mail className="w-6 h-6" />
+                </Link>
+                <div className="relative" ref={dropdownRef}>
+                  {/* Profile Picture */}
+                  <div 
+                    className="w-10 h-10 rounded-full overflow-hidden border-2 border-green-500 cursor-pointer"
+                    onClick={toggleDropdown}
+                  >
+                    {user?.profile_photo_url ? (
+                      <Image
+                        src={user.profile_photo_url}
+                        alt="Profile"
+                        width={40}
+                        height={40}
+                        className="object-cover"
+                      />
+                    ) : (
+                      <div className="w-full h-full bg-gray-200 flex items-center justify-center">
+                        <span className="text-gray-500 text-sm font-bold">
+                          {user?.username?.charAt(0)?.toUpperCase() || 'U'}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Dropdown (appears on click) */}
+                  {isDropdownOpen && (
+                    <div className="absolute right-0 mt-2 w-48 bg-white rounded shadow-lg py-1 z-50">
+                      <Link 
+                        href="/profile" 
+                        className="block px-4 py-2 text-gray-700 hover:bg-gray-100"
+                        onClick={() => setIsDropdownOpen(false)}
+                      >
+                        Profile
+                      </Link>
+                      <button
+                        onClick={() => {
+                          handleLogout();
+                          setIsDropdownOpen(false);
+                        }}
+                        className="block w-full text-left px-4 py-2 text-red-600 hover:bg-gray-100"
+                      >
+                        Logout
+                      </button>
                     </div>
                   )}
                 </div>
-
-                {/* Dropdown (appears on click) */}
-                {isDropdownOpen && (
-                  <div className="absolute right-0 mt-2 w-48 bg-white rounded shadow-lg py-1 z-50">
-                    <Link 
-                      href="/profile" 
-                      className="block px-4 py-2 text-gray-700 hover:bg-gray-100"
-                      onClick={() => setIsDropdownOpen(false)}
-                    >
-                      Profile
-                    </Link>
-                    <Link 
-                      href="/messages" 
-                      className="block px-4 py-2 text-gray-700 hover:bg-gray-100"
-                      onClick={() => setIsDropdownOpen(false)}
-                    >
-                      Messages
-                    </Link>
-                    <button
-                      onClick={() => {
-                        handleLogout();
-                        setIsDropdownOpen(false);
-                      }}
-                      className="block w-full text-left px-4 py-2 text-red-600 hover:bg-gray-100"
-                    >
-                      Logout
-                    </button>
-                  </div>
-                )}
-              </div>
+              </>
             ) : (
               <div className="flex items-center space-x-2">
                 <Link href="/login" className="px-3 py-2 text-gray-700 hover:text-green-600">

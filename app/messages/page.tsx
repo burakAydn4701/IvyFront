@@ -98,7 +98,7 @@ function MessagesContent() {
   }
 
   return (
-    <div className="container mx-auto p-4 max-w-4xl">
+    <div className="pl-[25%] pr-[10%] pt-4 pb-4">
       <h1 className="text-3xl font-bold mb-6 text-gray-800">Messages</h1>
       
       {error && (
@@ -107,9 +107,9 @@ function MessagesContent() {
         </div>
       )}
       
-      <div className="flex h-[500px] bg-white shadow-md rounded-lg overflow-hidden">
-        {/* Chat list sidebar - fixed width */}
-        <div className="w-56 border-r border-gray-200 flex-shrink-0">
+      <div className="flex h-[calc(100vh-12rem)] bg-white shadow-md rounded-lg overflow-hidden">
+        {/* Chat list sidebar */}
+        <div className="w-1/4 border-r border-gray-200">
           <ChatList 
             chats={chats} 
             selectedChat={selectedChat} 
@@ -118,8 +118,8 @@ function MessagesContent() {
           />
         </div>
         
-        {/* Chat area - flexible width but with max-width */}
-        <div className="flex-1 flex flex-col overflow-hidden max-w-[calc(100%-14rem)]">
+        {/* Chat area */}
+        <div className="w-3/4 flex flex-col">
           {selectedChat && selectedChat.other_user && currentUser ? (
             <ChatDetail
               chatId={selectedChat.id}

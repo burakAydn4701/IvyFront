@@ -27,7 +27,7 @@ export default function CreateCommunityModal({ isOpen, onClose, onCommunityCreat
         name,
         description,
         profile_photo: profilePhoto || undefined,
-        banner_image: bannerImage || undefined,
+        banner: bannerImage || undefined,
       });
 
       setName('');
