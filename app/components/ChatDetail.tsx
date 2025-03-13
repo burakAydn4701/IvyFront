@@ -278,6 +278,11 @@ export default function ChatDetail({ chatId, currentUser, otherUser }: ChatDetai
     }
   }, [messages]);
 
+  // Monitor messages state changes
+  useEffect(() => {
+    console.log('Updated messages:', messages);
+  }, [messages]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newMessage.trim()) return;
