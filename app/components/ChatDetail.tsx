@@ -52,14 +52,182 @@ export default function ChatDetail({ chatId, currentUser, otherUser }: ChatDetai
   const [isConnected, setIsConnected] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messageListRef = useRef<HTMLDivElement>(null);
+  const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // Consolidated scroll function with debounce
+  const scrollToBottom = (smooth = true) => {
+    // Clear any pending scroll
+    if (scrollTimeoutRef.current) {
+      clearTimeout(scrollTimeoutRef.current);
+    }
+
+    scrollTimeoutRef.current = setTimeout(() => {
+      if (messagesEndRef.current) {
+        messagesEndRef.current.scrollIntoView({
+          behavior: smooth ? 'smooth' : 'auto',
+          block: 'end'
+        });
+      }
+    }, 100);
+  };
+
+  // Clean up scroll timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  // Scroll when messages change
+  useEffect(() => {
+    if (messages.length > 0) {
+      scrollToBottom(true);
+    }
+  }, [messages]);
+
+  // Add message handler ref
+  const messageHandler = useRef((data: WebSocketMessage) => {
+    console.log('Message handler called with:', data);
+    
+    if (!data) return;
+    
+    if (typeof data === 'object' && 'type' in data && 
+        (data.type === 'ping' || data.type === 'pong' || data.type === 'connected')) {
+      return;
+    }
+
+    try {
+      let messageContent, userId, messageId, createdAt;
+      
+      if (typeof data === 'string') {
+        try {
+          const parsedData = JSON.parse(data);
+          messageContent = parsedData.body || parsedData.message || '';
+          userId = parsedData.user_id || parsedData.user?.id || currentUser.id;
+          messageId = parsedData.id || `ws-${Date.now()}`;
+          createdAt = parsedData.created_at || new Date().toISOString();
+        } catch (e) {
+          messageContent = data;
+          userId = currentUser.id;
+          messageId = `ws-${Date.now()}`;
+          createdAt = new Date().toISOString();
+        }
+      } else {
+        messageContent = data.body || data.message?.body || data.content || '';
+        userId = data.user_id || data.message?.user_id || data.user?.id || '';
+        messageId = data.id || data.message?.id || `ws-${Date.now()}`;
+        createdAt = data.created_at || data.message?.created_at || new Date().toISOString();
+      }
+
+      if (!messageContent) return;
+
+      const messageObj: Message = {
+        id: messageId,
+        content: messageContent,
+        body: messageContent,
+        user_id: userId,
+        chat_id: chatId,
+        created_at: createdAt,
+        user: {
+          id: userId,
+          username: userId === currentUser.id ? currentUser.username : otherUser.username
+        }
+      };
+
+      console.log('Processing message:', messageObj);
+      
+      // Check for duplicates before updating state
+      setMessages(prevMessages => {
+        // Check for exact duplicates or very recent similar messages
+        const isDuplicate = prevMessages.some(m => 
+          m.id === messageObj.id || 
+          (m.content === messageObj.content && 
+           m.user_id === messageObj.user_id && 
+           Math.abs(new Date(m.created_at).getTime() - new Date(messageObj.created_at).getTime()) < 1000)
+        );
+
+        if (isDuplicate) {
+          console.log('Duplicate message detected, skipping');
+          return prevMessages;
+        }
+
+        console.log('Adding new unique message');
+        return [...prevMessages, messageObj];
+      });
+      
+      // Force scroll after state update
+      setTimeout(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }, 100);
+
+    } catch (error) {
+      console.error('Error processing message:', error);
+    }
+  });
+
+  // Update message handler when dependencies change
+  useEffect(() => {
+    messageHandler.current = messageHandler.current;
+  }, [currentUser.id, otherUser.username, chatId]);
 
   // Add useEffect to monitor connection status changes
   useEffect(() => {
     console.log('Connection status changed:', isConnected);
   }, [isConnected]);
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newMessage.trim()) return;
+
+    console.log('Attempting to send message:', newMessage);
+    console.log('Current connection status:', isConnected);
+
+    try {
+      // Create optimistic message with a temporary ID
+      const tempId = `temp-${Date.now()}`;
+      const tempMessage: Message = {
+        id: tempId,
+        content: newMessage,
+        body: newMessage,
+        user_id: currentUser.id,
+        chat_id: chatId,
+        created_at: new Date().toISOString(),
+        user: {
+          id: currentUser.id,
+          username: currentUser.username
+        }
+      };
+
+      console.log('Created optimistic message:', tempMessage);
+
+      // Clear input immediately for better UX
+      const messageCopy = newMessage.trim();
+      setNewMessage('');
+
+      // Only add optimistic message if we're not using WebSocket
+      if (!subscription || !isConnected) {
+        console.log('No WebSocket connection, adding optimistic message');
+        setMessages(prev => [...prev, tempMessage]);
+      }
+
+      // Send message to the server
+      console.log('Sending message to server...');
+      
+      if (subscription && isConnected) {
+        // Use the WebSocket subscription if available
+        console.log('Using WebSocket to send message');
+        subscription.sendMessage(messageCopy);
+      } else {
+        // Fall back to the API method
+        console.log('WebSocket not available, using API fallback');
+        const response = await api.sendChatMessage(chatId, messageCopy);
+        console.log('API response:', response);
+      }
+    } catch (error) {
+      console.error('Error sending message:', error);
+    }
   };
 
   useEffect(() => {
@@ -72,7 +240,8 @@ export default function ChatDetail({ chatId, currentUser, otherUser }: ChatDetai
         console.log("Fetched chat data:", chatData);
         if (chatData.messages) {
           setMessages(chatData.messages);
-          scrollToBottom();
+          // Use instant scroll for initial load
+          scrollToBottom(false);
         }
       } catch (error) {
         console.error('Failed to fetch messages:', error);
@@ -92,7 +261,6 @@ export default function ChatDetail({ chatId, currentUser, otherUser }: ChatDetai
         return null;
       }
       
-      // Create a new subscription for this chat with type casting
       const sub = consumer.subscriptions.create(
         {
           channel: 'ChatChannel',
@@ -103,7 +271,6 @@ export default function ChatDetail({ chatId, currentUser, otherUser }: ChatDetai
             console.log(`Connected to chat ${chatId} via WebSocket`);
             setIsConnected(true);
             
-            // Set up client-side ping every 4 minutes (slightly less than server's 5 minutes)
             (this as ChatSubscription).pingInterval = setInterval(() => {
               console.log('Sending ping to keep connection alive');
               (this as ChatSubscription).perform('receive', { type: 'ping' });
@@ -117,7 +284,6 @@ export default function ChatDetail({ chatId, currentUser, otherUser }: ChatDetai
               clearInterval((this as ChatSubscription).pingInterval);
             }
             
-            // Try to reconnect after a short delay
             setTimeout(() => {
               console.log('Attempting to reconnect WebSocket...');
               const newSub = setupChatSubscription();
@@ -128,94 +294,8 @@ export default function ChatDetail({ chatId, currentUser, otherUser }: ChatDetai
           },
           
           received(data: WebSocketMessage) {
-            console.log('Received WebSocket message:', data);
-            
-            // Skip empty messages
-            if (!data) {
-              console.log('Received empty message, ignoring');
-              return;
-            }
-            
-            // Handle different message types
-            if (typeof data === 'object' && 'type' in data && 
-                (data.type === 'ping' || data.type === 'pong' || data.type === 'connected')) {
-              console.log(`Connection status: ${data.type}`);
-              return;
-            }
-            
-            // Extract message content and metadata
-            let messageContent = '';
-            let userId = '';
-            let messageId = '';
-            let createdAt = new Date().toISOString();
-            
-            if (typeof data === 'string') {
-              try {
-                // Try to parse as JSON
-                const parsedData = JSON.parse(data);
-                messageContent = parsedData.body || '';
-                userId = parsedData.user?.id || '';
-                messageId = parsedData.id || `ws-${Date.now()}`;
-                createdAt = parsedData.created_at || createdAt;
-              } catch (e) {
-                // If not valid JSON, use as is
-                messageContent = data;
-                userId = currentUser.id; // Default to current user
-                messageId = `ws-${Date.now()}`;
-              }
-            } else if (typeof data === 'object') {
-              // Direct object format from Rails backend
-              messageContent = data.body || '';
-              userId = data.user?.id || '';
-              messageId = data.id || `ws-${Date.now()}`;
-              createdAt = data.created_at || createdAt;
-            }
-            
-            if (!messageContent) {
-              console.log('No message content found, ignoring:', data);
-              return;
-            }
-            
-            console.log('Extracted message data:', { 
-              content: messageContent, 
-              userId, 
-              messageId, 
-              createdAt 
-            });
-            
-            // Format the message to match our Message type
-            const messageObj: Message = {
-              id: messageId,
-              content: messageContent,
-              body: messageContent,
-              user_id: userId,
-              chat_id: chatId,
-              created_at: createdAt,
-              user: {
-                id: userId,
-                username: userId === currentUser.id ? currentUser.username : otherUser.username
-              }
-            };
-            
-            console.log('Formatted message object:', messageObj);
-            
-            // IMPORTANT: Use a callback function to get the latest messages state
-            setMessages(prevMessages => {
-              // Check if we already have this message (by ID)
-              const messageExists = prevMessages.some(m => m.id === messageObj.id);
-              
-              if (!messageExists) {
-                console.log('Adding new message to state');
-                // Create a new array with the new message
-                const newMessages = [...prevMessages, messageObj];
-                // Schedule scrolling after state update
-                setTimeout(scrollToBottom, 50);
-                return newMessages;
-              } else {
-                console.log('Message already exists, not adding');
-                return prevMessages;
-              }
-            });
+            console.log('WebSocket received:', data);
+            messageHandler.current(data);
           },
           
           // Send a message
@@ -223,17 +303,13 @@ export default function ChatDetail({ chatId, currentUser, otherUser }: ChatDetai
             console.log(`Sending message to chat ${chatId}: ${message}`);
             
             try {
-              // First try with the simplified format
               (this as ChatSubscription).perform('receive', { 
-                message: message  // Simplified to match backend expectation
+                message: message
               });
               console.log('Message sent via WebSocket');
             } catch (error) {
               console.error('Error sending message via WebSocket:', error);
-              // Fall back to API if WebSocket fails
-              api.sendChatMessage(chatId, message)
-                .then(response => console.log('Message sent via API fallback:', response))
-                .catch(err => console.error('API fallback also failed:', err));
+              throw error; // Let handleSubmit handle the fallback
             }
           },
           
@@ -267,75 +343,10 @@ export default function ChatDetail({ chatId, currentUser, otherUser }: ChatDetai
     };
   }, [chatId, currentUser.id, otherUser.id]);
 
-  // Scroll to bottom when messages change
-  useEffect(() => {
-    // Only scroll if there are messages
-    if (messages.length > 0) {
-      // Use requestAnimationFrame to ensure we scroll after the render is complete
-      requestAnimationFrame(() => {
-        scrollToBottom();
-      });
-    }
-  }, [messages]);
-
   // Monitor messages state changes
   useEffect(() => {
     console.log('Updated messages:', messages);
   }, [messages]);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newMessage.trim()) return;
-
-    console.log('Attempting to send message:', newMessage);
-    console.log('Current connection status:', isConnected);
-
-    try {
-      // Create optimistic message with a temporary ID
-      const tempId = `temp-${Date.now()}`;
-      const tempMessage: Message = {
-        id: tempId,
-        content: newMessage,
-        body: newMessage,
-        user_id: currentUser.id,
-        chat_id: chatId,
-        created_at: new Date().toISOString(),
-        user: {
-          id: currentUser.id,
-          username: currentUser.username
-        }
-      };
-
-      console.log('Created optimistic message:', tempMessage);
-
-      // Add optimistic message to UI immediately
-      setMessages(prev => [...prev, tempMessage]);
-      
-      // Clear input immediately for better UX
-      const messageCopy = newMessage.trim();
-      setNewMessage('');
-      
-      // Scroll to bottom
-      setTimeout(scrollToBottom, 50);
-
-      // Send message to the server
-      console.log('Sending message to server...');
-      
-      if (subscription) {
-        // Use the WebSocket subscription if available
-        console.log('Using WebSocket to send message');
-        subscription.sendMessage(messageCopy);
-      } else {
-        // Fall back to the API method
-        console.log('WebSocket not available, using API fallback');
-        const response = await api.sendChatMessage(chatId, messageCopy);
-        console.log('API response:', response);
-      }
-    } catch (error) {
-      console.error('Error sending message:', error);
-      // The optimistic message remains in the UI even if there's an error
-    }
-  };
 
   return (
     <div className="flex flex-col h-full">
