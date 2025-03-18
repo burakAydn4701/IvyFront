@@ -15,6 +15,7 @@ interface Post {
   comments_count: number;
   user: { id: string; username: string };
   upvoted_by_current_user: boolean;
+  image_url?: string; // Optional field for images
 }
 
 export default function HomePage() {
@@ -46,21 +47,57 @@ export default function HomePage() {
 
   const handleUpvote = async (postId: string, isUpvoted: boolean) => {
     try {
-      const response = isUpvoted
-        ? await api.deleteUpvote(postId, 'Post')
-        : await api.createUpvote(postId, 'Post');
+      // Get current user ID from token
+      const token = localStorage.getItem('authToken');
+      if (!token) return;
+      
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      const userId = payload.user_id;
 
-      if (response.success) {
-        setPosts((prevPosts) =>
-          prevPosts.map((post) =>
+      // Optimistically update the UI
+      setPosts(prevPosts =>
+        prevPosts.map(post =>
+          post.id === postId
+            ? { ...post, upvoted_by_current_user: !isUpvoted }
+            : post
+        )
+      );
+
+      const response = await api.togglePostUpvote(postId, userId, isUpvoted);
+      
+      // Update with the server response
+      setPosts(prevPosts =>
+        prevPosts.map(post =>
+          post.id === postId
+            ? { 
+                ...post, 
+                upvoted_by_current_user: response.upvoted_by_current_user,
+                upvotes_count: response.upvotes_count 
+              }
+            : post
+        )
+      );
+    } catch (error: any) {
+      console.error('Failed to update upvote:', error);
+      // If the error is because the user already upvoted, maintain the upvoted state
+      if (error.message?.includes('can only upvote once')) {
+        setPosts(prevPosts =>
+          prevPosts.map(post =>
             post.id === postId
-              ? { ...post, upvotes_count: response.upvotes_count, upvoted_by_current_user: !isUpvoted }
+              ? { ...post, upvoted_by_current_user: true }
+              : post
+          )
+        );
+      } else {
+        // Revert the optimistic update on other errors
+        setPosts(prevPosts =>
+          prevPosts.map(post =>
+            post.id === postId
+              ? { ...post, upvoted_by_current_user: isUpvoted }
               : post
           )
         );
       }
-    } catch (error) {
-      console.error('Failed to update upvote:', error);
     }
   };
 
@@ -102,12 +139,16 @@ export default function HomePage() {
                   <p className="text-gray-900 mb-4 line-clamp-3">{post.content}</p>
                   <div className="flex items-center text-sm text-gray-900">
                     <button
-                      onClick={() => handleUpvote(post.id, post.upvoted_by_current_user)}
+                      onClick={(e) => {
+                        e.preventDefault(); // Prevent Link navigation
+                        e.stopPropagation(); // Prevent event bubbling
+                        handleUpvote(post.id, post.upvoted_by_current_user);
+                      }}
                       className={`flex items-center mr-4 ${
-                        post.upvoted_by_current_user ? 'text-green-600' : 'text-gray-600 hover:text-gray-900'
+                        post.upvoted_by_current_user ? 'text-blue-600' : 'text-gray-600 hover:text-gray-900'
                       }`}
                     >
-                      <ArrowUp className="w-4 h-4 mr-1" />
+                      <ArrowUp className={`w-4 h-4 mr-1 ${post.upvoted_by_current_user ? 'fill-blue-600' : ''}`} />
                       <span>{post.upvotes_count || 0} upvotes</span>
                     </button>
                     <div className="flex items-center mr-4">

@@ -118,34 +118,111 @@ export default function PostPage({ params }: { params: any }) {
     if (!isLoggedIn) return;
     
     try {
-      const response = isUpvoted
-        ? await api.deleteUpvote(id, type)
-        : await api.createUpvote(id, type);
+      // Get current user ID from token
+      const token = localStorage.getItem('authToken');
+      if (!token) return;
+      
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      const userId = payload.user_id;
 
-      if (response.success) {
+      // Optimistically update the UI
+      if (type === 'Post') {
+        setPost({
+          ...post,
+          upvoted_by_current_user: !isUpvoted
+        });
+      } else {
+        setComments(prevComments => 
+          prevComments.map(comment => 
+            comment.id === id 
+              ? {...comment, upvoted_by_current_user: !isUpvoted}
+              : {...comment, replies: (comment.replies || []).map((reply: any) => 
+                  reply.id === id 
+                    ? {...reply, upvoted_by_current_user: !isUpvoted}
+                    : reply
+                )}
+          )
+        );
+      }
+
+      let response;
+      if (type === 'Post') {
+        response = await api.togglePostUpvote(id, userId, isUpvoted);
+      } else {
+        response = await api.toggleCommentUpvote(id, userId, isUpvoted);
+      }
+
+      // Update with the server response
+      if (type === 'Post') {
+        setPost({
+          ...post,
+          upvoted_by_current_user: response.upvoted_by_current_user,
+          upvotes_count: response.upvotes_count,
+        });
+      } else {
+        setComments(prevComments => 
+          prevComments.map(comment => 
+            comment.id === id 
+              ? {
+                  ...comment, 
+                  upvoted_by_current_user: response.upvoted_by_current_user, 
+                  upvotes_count: response.upvotes_count
+                }
+              : {...comment, replies: (comment.replies || []).map((reply: any) => 
+                  reply.id === id 
+                    ? {
+                        ...reply, 
+                        upvoted_by_current_user: response.upvoted_by_current_user, 
+                        upvotes_count: response.upvotes_count
+                      }
+                    : reply
+                )}
+          )
+        );
+      }
+    } catch (error: any) {
+      console.error('Failed to update upvote:', error);
+      // If the error is because the user already upvoted, maintain the upvoted state
+      if (error.message?.includes('can only upvote once')) {
         if (type === 'Post') {
           setPost({
             ...post,
-            upvoted_by_current_user: !isUpvoted,
-            upvotes_count: response.upvotes_count,
+            upvoted_by_current_user: true,
           });
         } else {
-          // Update comments or replies
           setComments(prevComments => 
             prevComments.map(comment => 
               comment.id === id 
-                ? {...comment, upvoted_by_current_user: !isUpvoted, upvotes_count: response.upvotes_count}
+                ? {...comment, upvoted_by_current_user: true}
                 : {...comment, replies: (comment.replies || []).map((reply: any) => 
                     reply.id === id 
-                      ? {...reply, upvoted_by_current_user: !isUpvoted, upvotes_count: response.upvotes_count}
+                      ? {...reply, upvoted_by_current_user: true}
+                      : reply
+                  )}
+            )
+          );
+        }
+      } else {
+        // Revert the optimistic update on other errors
+        if (type === 'Post') {
+          setPost({
+            ...post,
+            upvoted_by_current_user: isUpvoted,
+          });
+        } else {
+          setComments(prevComments => 
+            prevComments.map(comment => 
+              comment.id === id 
+                ? {...comment, upvoted_by_current_user: isUpvoted}
+                : {...comment, replies: (comment.replies || []).map((reply: any) => 
+                    reply.id === id 
+                      ? {...reply, upvoted_by_current_user: isUpvoted}
                       : reply
                   )}
             )
           );
         }
       }
-    } catch (error) {
-      console.error('Failed to update upvote:', error);
     }
   };
 
@@ -287,11 +364,11 @@ export default function PostPage({ params }: { params: any }) {
             !isLoggedIn 
               ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
               : post.upvoted_by_current_user
-                ? 'bg-blue-50 text-blue-600 hover:bg-blue-100'
+                ? 'bg-blue-50 text-blue-600'
                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
           }`}
         >
-          <ArrowUp className="w-5 h-5 mr-2" />
+          <ArrowUp className={`w-5 h-5 mr-2 ${post.upvoted_by_current_user ? 'fill-blue-600' : ''}`} />
           <span className="font-medium">{post.upvotes_count || 0} upvotes</span>
         </button>
       </div>
@@ -357,7 +434,7 @@ export default function PostPage({ params }: { params: any }) {
                           : 'text-gray-500 hover:text-gray-700'
                     }`}
                   >
-                    <ArrowUp className="w-4 h-4 mr-1" />
+                    <ArrowUp className={`w-4 h-4 mr-1 ${comment.upvoted_by_current_user ? 'fill-blue-600' : ''}`} />
                     <span>{comment.upvotes_count || 0}</span>
                   </button>
                   
@@ -422,7 +499,7 @@ export default function PostPage({ params }: { params: any }) {
                                 : 'text-gray-500 hover:text-gray-700'
                           }`}
                         >
-                          <ArrowUp className="w-4 h-4 mr-1" />
+                          <ArrowUp className={`w-4 h-4 mr-1 ${reply.upvoted_by_current_user ? 'fill-blue-600' : ''}`} />
                           <span>{reply.upvotes_count || 0}</span>
                         </button>
                       </div>
