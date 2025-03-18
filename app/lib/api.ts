@@ -198,13 +198,19 @@ export const api = {
       return fetchApi(`/api/posts/${postId}/upvotes`, {
         method: 'DELETE',
         body: JSON.stringify({ user_id: userId }),
-      });
+      }).then(response => ({
+        ...response,
+        upvoted_by_current_user: false
+      }));
     } else {
       // Add upvote - singular resource
       return fetchApi(`/api/posts/${postId}/upvotes`, {
         method: 'POST',
         body: JSON.stringify({ user_id: userId }),
-      });
+      }).then(response => ({
+        ...response,
+        upvoted_by_current_user: true
+      }));
     }
   },
 
@@ -215,13 +221,19 @@ export const api = {
       return fetchApi(`/api/comments/${commentId}/upvotes`, {
         method: 'DELETE',
         body: JSON.stringify({ user_id: userId }),
-      });
+      }).then(response => ({
+        ...response,
+        upvoted_by_current_user: false
+      }));
     } else {
       // Add upvote - singular resource
       return fetchApi(`/api/comments/${commentId}/upvotes`, {
         method: 'POST',
         body: JSON.stringify({ user_id: userId }),
-      });
+      }).then(response => ({
+        ...response,
+        upvoted_by_current_user: true
+      }));
     }
   },
 

@@ -118,34 +118,111 @@ export default function PostPage({ params }: { params: any }) {
     if (!isLoggedIn) return;
     
     try {
-      const response = isUpvoted
-        ? await api.deleteUpvote(id, type)
-        : await api.createUpvote(id, type);
+      // Get current user ID from token
+      const token = localStorage.getItem('authToken');
+      if (!token) return;
+      
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      const userId = payload.user_id;
 
-      if (response.success) {
+      // Optimistically update the UI
+      if (type === 'Post') {
+        setPost({
+          ...post,
+          upvoted_by_current_user: !isUpvoted
+        });
+      } else {
+        setComments(prevComments => 
+          prevComments.map(comment => 
+            comment.id === id 
+              ? {...comment, upvoted_by_current_user: !isUpvoted}
+              : {...comment, replies: (comment.replies || []).map((reply: any) => 
+                  reply.id === id 
+                    ? {...reply, upvoted_by_current_user: !isUpvoted}
+                    : reply
+                )}
+          )
+        );
+      }
+
+      let response;
+      if (type === 'Post') {
+        response = await api.togglePostUpvote(id, userId, isUpvoted);
+      } else {
+        response = await api.toggleCommentUpvote(id, userId, isUpvoted);
+      }
+
+      // Update with the server response
+      if (type === 'Post') {
+        setPost({
+          ...post,
+          upvoted_by_current_user: response.upvoted_by_current_user,
+          upvotes_count: response.upvotes_count,
+        });
+      } else {
+        setComments(prevComments => 
+          prevComments.map(comment => 
+            comment.id === id 
+              ? {
+                  ...comment, 
+                  upvoted_by_current_user: response.upvoted_by_current_user, 
+                  upvotes_count: response.upvotes_count
+                }
+              : {...comment, replies: (comment.replies || []).map((reply: any) => 
+                  reply.id === id 
+                    ? {
+                        ...reply, 
+                        upvoted_by_current_user: response.upvoted_by_current_user, 
+                        upvotes_count: response.upvotes_count
+                      }
+                    : reply
+                )}
+          )
+        );
+      }
+    } catch (error: any) {
+      console.error('Failed to update upvote:', error);
+      // If the error is because the user already upvoted, maintain the upvoted state
+      if (error.message?.includes('can only upvote once')) {
         if (type === 'Post') {
           setPost({
             ...post,
-            upvoted_by_current_user: !isUpvoted,
-            upvotes_count: response.upvotes_count,
+            upvoted_by_current_user: true,
           });
         } else {
-          // Update comments or replies
           setComments(prevComments => 
             prevComments.map(comment => 
               comment.id === id 
-                ? {...comment, upvoted_by_current_user: !isUpvoted, upvotes_count: response.upvotes_count}
+                ? {...comment, upvoted_by_current_user: true}
                 : {...comment, replies: (comment.replies || []).map((reply: any) => 
                     reply.id === id 
-                      ? {...reply, upvoted_by_current_user: !isUpvoted, upvotes_count: response.upvotes_count}
+                      ? {...reply, upvoted_by_current_user: true}
+                      : reply
+                  )}
+            )
+          );
+        }
+      } else {
+        // Revert the optimistic update on other errors
+        if (type === 'Post') {
+          setPost({
+            ...post,
+            upvoted_by_current_user: isUpvoted,
+          });
+        } else {
+          setComments(prevComments => 
+            prevComments.map(comment => 
+              comment.id === id 
+                ? {...comment, upvoted_by_current_user: isUpvoted}
+                : {...comment, replies: (comment.replies || []).map((reply: any) => 
+                    reply.id === id 
+                      ? {...reply, upvoted_by_current_user: isUpvoted}
                       : reply
                   )}
             )
           );
         }
       }
-    } catch (error) {
-      console.error('Failed to update upvote:', error);
     }
   };
 
@@ -206,6 +283,7 @@ export default function PostPage({ params }: { params: any }) {
   }
 
   return (
+<<<<<<< HEAD
     <div>
       <article className="p-4 border-b">
         <div className="flex">
@@ -214,6 +292,228 @@ export default function PostPage({ params }: { params: any }) {
             <Link href={`/users/${post.user.id}`}>
               <div className="w-10 h-10 rounded-full bg-green-600 flex items-center justify-center text-white">
                 {post.user.username[0].toUpperCase()}
+=======
+    <div className="max-w-4xl mx-auto p-6 bg-white rounded-lg shadow-sm">
+      {/* Post Header */}
+      <div className="mb-6">
+        <div className="flex justify-between items-start">
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">{post.title}</h1>
+          
+          {/* Three-dot menu - only shown for user's own posts */}
+          {normalizeId(post.user_id) === normalizeId(currentUserId) && (
+            <div className="relative">
+              <button
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setIsMenuOpen(!isMenuOpen);
+                  
+                  // Debug info
+                  const postUserId = normalizeId(post.user_id);
+                  const currentId = normalizeId(currentUserId);
+                  console.log(`Post ${post.id} - User ID: ${postUserId}, Current User ID: ${currentId}, Match: ${postUserId === currentId}`);
+                }}
+                data-menu-button="true"
+                className="text-gray-500 hover:text-gray-700 focus:outline-none bg-gray-100 hover:bg-gray-200 rounded-full p-2"
+                aria-label="Post options"
+              >
+                <MoreVertical className="w-6 h-6" />
+              </button>
+              
+              {/* Dropdown menu */}
+              {isMenuOpen && (
+                <div 
+                  className="absolute right-0 mt-1 w-36 bg-white rounded-md shadow-lg z-20 border border-gray-200"
+                  onClick={(e) => e.stopPropagation()}
+                  data-menu-dropdown="true"
+                >
+                  <button
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      isMenuActionRef.current = true;
+                      handleDeletePost();
+                    }}
+                    className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-100 rounded-md"
+                  >
+                    Delete post
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+        <div className="flex items-center text-sm text-gray-500">
+          <span>Posted by {post.user ? (
+            <Link 
+              href={`/users/${post.user.id}`}
+              className="hover:text-green-600 hover:underline"
+            >
+              {post.user.username}
+            </Link>
+          ) : 'Anonymous'}</span>
+          <span className="mx-2">•</span>
+          <span>{new Date(post.created_at).toLocaleDateString()}</span>
+        </div>
+      </div>
+      
+      {/* Post Content */}
+      <div className="prose max-w-none mb-6">
+        <p className="text-gray-800 text-lg">{post.content}</p>
+      </div>
+      
+      {/* Upvote Button */}
+      <div className="mb-8 flex items-center">
+        <button 
+          onClick={() => isLoggedIn ? handleUpvote(post.id, post.upvoted_by_current_user, 'Post') : null}
+          disabled={!isLoggedIn}
+          className={`flex items-center px-3 py-2 rounded-md transition ${
+            !isLoggedIn 
+              ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
+              : post.upvoted_by_current_user
+                ? 'bg-blue-50 text-blue-600'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+          }`}
+        >
+          <ArrowUp className={`w-5 h-5 mr-2 ${post.upvoted_by_current_user ? 'fill-blue-600' : ''}`} />
+          <span className="font-medium">{post.upvotes_count || 0} upvotes</span>
+        </button>
+      </div>
+      
+      {/* Comments Section */}
+      <div className="border-t pt-6">
+        <h2 className="text-2xl font-bold text-gray-900 mb-6">
+          Comments ({comments.length})
+        </h2>
+        
+        {/* Add Comment Form */}
+        {isLoggedIn && (
+          <div className="mb-8">
+            <textarea
+              value={commentText}
+              onChange={(e) => setCommentText(e.target.value)}
+              placeholder="Add a comment..."
+              className="w-full p-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              rows={3}
+            />
+            <button
+              onClick={handleCommentSubmit}
+              className="mt-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition"
+            >
+              Post Comment
+            </button>
+          </div>
+        )}
+        
+        {/* Comments List */}
+        {comments.length === 0 ? (
+          <p className="text-gray-500 italic">No comments yet. Be the first to comment!</p>
+        ) : (
+          <div className="space-y-6">
+            {comments.map((comment) => (
+              <div key={comment.id} className="border-b pb-4">
+                <div className="flex items-center mb-2">
+                  {comment.user ? (
+                    <Link 
+                      href={`/users/${comment.user.id}`}
+                      className="font-medium text-gray-900 hover:text-green-600 hover:underline"
+                    >
+                      {comment.user.username}
+                    </Link>
+                  ) : (
+                    <span className="font-medium text-gray-900">Anonymous</span>
+                  )}
+                  <span className="mx-2 text-gray-400">•</span>
+                  <span className="text-sm text-gray-500">{new Date(comment.created_at).toLocaleDateString()}</span>
+                </div>
+                
+                <p className="text-gray-800 mb-3">{comment.content}</p>
+                
+                <div className="flex items-center space-x-4">
+                  <button
+                    onClick={() => isLoggedIn ? handleUpvote(comment.id, comment.upvoted_by_current_user, 'Comment') : null}
+                    disabled={!isLoggedIn}
+                    className={`flex items-center text-sm ${
+                      !isLoggedIn 
+                        ? 'text-gray-400 cursor-not-allowed' 
+                        : comment.upvoted_by_current_user
+                          ? 'text-blue-600'
+                          : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    <ArrowUp className={`w-4 h-4 mr-1 ${comment.upvoted_by_current_user ? 'fill-blue-600' : ''}`} />
+                    <span>{comment.upvotes_count || 0}</span>
+                  </button>
+                  
+                  {isLoggedIn && (
+                    <button
+                      onClick={() => setReplyingTo(comment.id)}
+                      className="text-sm text-gray-500 hover:text-gray-700"
+                    >
+                      Reply
+                    </button>
+                  )}
+                </div>
+                
+                {/* Reply Form */}
+                {replyingTo === comment.id && (
+                  <div className="mt-3 ml-6">
+                    <textarea
+                      value={replyText}
+                      onChange={(e) => setReplyText(e.target.value)}
+                      placeholder="Write a reply..."
+                      className="w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      rows={2}
+                    />
+                    <div className="flex space-x-2 mt-2">
+                      <button
+                        onClick={() => handleReplySubmit(comment.id)}
+                        className="px-3 py-1 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 transition"
+                      >
+                        Submit
+                      </button>
+                      <button
+                        onClick={() => setReplyingTo(null)}
+                        className="px-3 py-1 bg-gray-200 text-gray-700 text-sm rounded-md hover:bg-gray-300 transition"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+                
+                {/* Replies */}
+                {comment.replies && comment.replies.length > 0 && (
+                  <div className="mt-4 ml-8 pl-4 border-l-2 border-gray-100">
+                    {comment.replies.map((reply: any) => (
+                      <div key={reply.id} className="mb-3 last:mb-0">
+                        <div className="flex items-center mb-1">
+                          <span className="font-medium text-gray-900">{reply.user?.username || 'Anonymous'}</span>
+                          <span className="mx-2 text-gray-400">•</span>
+                          <span className="text-sm text-gray-500">{new Date(reply.created_at).toLocaleDateString()}</span>
+                        </div>
+                        
+                        <p className="text-gray-800 mb-2">{reply.content}</p>
+                        
+                        <button
+                          onClick={() => isLoggedIn ? handleUpvote(reply.id, reply.upvoted_by_current_user, 'Reply') : null}
+                          disabled={!isLoggedIn}
+                          className={`flex items-center text-sm ${
+                            !isLoggedIn 
+                              ? 'text-gray-400 cursor-not-allowed' 
+                              : reply.upvoted_by_current_user
+                                ? 'text-blue-600'
+                                : 'text-gray-500 hover:text-gray-700'
+                          }`}
+                        >
+                          <ArrowUp className={`w-4 h-4 mr-1 ${reply.upvoted_by_current_user ? 'fill-blue-600' : ''}`} />
+                          <span>{reply.upvotes_count || 0}</span>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+>>>>>>> 5dd31985214f3e96655566a647c2393204d34340
               </div>
             </Link>
           </div>

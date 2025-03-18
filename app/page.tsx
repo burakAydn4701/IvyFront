@@ -15,7 +15,7 @@ interface Post {
   comments_count: number;
   user: { id: string; username: string; profile_photo_url?: string };
   upvoted_by_current_user: boolean;
-  image_url?: string;
+  image_url?: string; // Optional field for images
 }
 
 export default function HomePage() {
@@ -47,27 +47,57 @@ export default function HomePage() {
 
   const handleUpvote = async (postId: string, isUpvoted: boolean) => {
     try {
-      if (isUpvoted) {
-        await api.deleteUpvote(postId, 'Post');
-        setPosts((prevPosts) =>
-          prevPosts.map((post) =>
+      // Get current user ID from token
+      const token = localStorage.getItem('authToken');
+      if (!token) return;
+      
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      const userId = payload.user_id;
+
+      // Optimistically update the UI
+      setPosts(prevPosts =>
+        prevPosts.map(post =>
+          post.id === postId
+            ? { ...post, upvoted_by_current_user: !isUpvoted }
+            : post
+        )
+      );
+
+      const response = await api.togglePostUpvote(postId, userId, isUpvoted);
+      
+      // Update with the server response
+      setPosts(prevPosts =>
+        prevPosts.map(post =>
+          post.id === postId
+            ? { 
+                ...post, 
+                upvoted_by_current_user: response.upvoted_by_current_user,
+                upvotes_count: response.upvotes_count 
+              }
+            : post
+        )
+      );
+    } catch (error: any) {
+      console.error('Failed to update upvote:', error);
+      // If the error is because the user already upvoted, maintain the upvoted state
+      if (error.message?.includes('can only upvote once')) {
+        setPosts(prevPosts =>
+          prevPosts.map(post =>
             post.id === postId
-              ? { ...post, upvotes_count: post.upvotes_count - 1, upvoted_by_current_user: false }
+              ? { ...post, upvoted_by_current_user: true }
               : post
           )
         );
       } else {
-        await api.createUpvote(postId, 'Post');
-        setPosts((prevPosts) =>
-          prevPosts.map((post) =>
+        // Revert the optimistic update on other errors
+        setPosts(prevPosts =>
+          prevPosts.map(post =>
             post.id === postId
-              ? { ...post, upvotes_count: post.upvotes_count + 1, upvoted_by_current_user: true }
+              ? { ...post, upvoted_by_current_user: isUpvoted }
               : post
           )
         );
       }
-    } catch (error) {
-      console.error('Failed to update upvote:', error);
     }
   };
 
