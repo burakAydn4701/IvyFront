@@ -15,8 +15,9 @@ interface Post {
   created_at: string;
   upvotes_count: number;
   comments_count: number;
-  user: { id: string; username: string };
+  user: { id: string; username: string; profile_photo_url?: string };
   image_url?: string;
+  upvoted_by_current_user?: boolean;
 }
 
 interface Community {
@@ -183,6 +184,32 @@ export default function CommunityPage({ params }: { params: Promise<{ id: string
     );
   };
 
+  const handleUpvote = async (postId: string, isUpvoted: boolean) => {
+    try {
+      if (isUpvoted) {
+        await api.deleteUpvote(postId, 'Post');
+        setPosts((prevPosts) =>
+          prevPosts.map((post) =>
+            post.id === postId
+              ? { ...post, upvotes_count: post.upvotes_count - 1, upvoted_by_current_user: false }
+              : post
+          )
+        );
+      } else {
+        await api.createUpvote(postId, 'Post');
+        setPosts((prevPosts) =>
+          prevPosts.map((post) =>
+            post.id === postId
+              ? { ...post, upvotes_count: post.upvotes_count + 1, upvoted_by_current_user: true }
+              : post
+          )
+        );
+      }
+    } catch (error) {
+      console.error('Failed to update upvote:', error);
+    }
+  };
+
   if (isLoading) {
     return <div className="p-4 ml-64 mt-16">Loading community...</div>;
   }
@@ -192,18 +219,18 @@ export default function CommunityPage({ params }: { params: Promise<{ id: string
   }
 
   return (
-    <main className="p-4 ml-64 mt-16">
-      <div className="max-w-4xl mx-auto">
-        {/* Community Header */}
-        <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">{community.name}</h1>
-          <p className="text-gray-600 mb-4">{community.description}</p>
-          <div className="flex items-center text-sm text-gray-600">
-            <span>Created {new Date(community.created_at).toLocaleDateString()}</span>
-          </div>
+    <div>
+      {/* Community Header */}
+      <div className="bg-white p-4 border-b">
+        <h1 className="text-2xl font-bold text-gray-900 mb-2">{community.name}</h1>
+        <p className="text-gray-600 mb-4">{community.description}</p>
+        <div className="flex items-center text-sm text-gray-600">
+          <span>Created {new Date(community.created_at).toLocaleDateString()}</span>
         </div>
+      </div>
 
-        {/* Posts Section */}
+      {/* Posts Section */}
+      <div className="p-4 border-b">
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-xl font-bold text-gray-900">Posts in {community.name}</h2>
           
@@ -216,71 +243,87 @@ export default function CommunityPage({ params }: { params: Promise<{ id: string
             </button>
           )}
         </div>
+      </div>
 
+      {/* Posts List */}
+      <div>
         {posts.length === 0 ? (
-          <div className="bg-white rounded-lg shadow-sm p-6">
+          <div className="p-4">
             <p className="text-gray-900">No posts in this community yet. Be the first to create a post!</p>
           </div>
         ) : (
-          <div className="space-y-4">
-            {posts.map((post) => {
-              // Debug info with more details
-              const postUserId = normalizeId(post.user_id);
-              const currentId = normalizeId(currentUserId);
-              const isOwner = postUserId === currentId;
-              
-              console.log(`Post ${post.id} - User ID: ${postUserId} (${typeof post.user_id}), Current User ID: ${currentId} (${typeof currentUserId}), Match: ${isOwner}`);
-              
-              return (
-                <div key={post.id} className="bg-white rounded-lg shadow-sm p-6 hover:shadow-md transition-shadow relative">
-                  {/* Three-dot menu - only shown for user's own posts */}
-                  {isOwner && (
-                    renderPostMenu(post)
-                  )}
-                  
-                  <p className="text-sm text-gray-500 mb-1">
+          posts.map((post) => (
+            <article key={post.id} className="border-b p-4">
+              <div className="flex">
+                {/* User profile picture */}
+                <div className="mr-3 flex-shrink-0">
+                  <Link href={`/users/${post.user.id}`}>
+                    {post.user.profile_photo_url ? (
+                      <img 
+                        src={post.user.profile_photo_url} 
+                        alt={post.user.username}
+                        className="w-10 h-10 rounded-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-10 h-10 rounded-full bg-green-600 flex items-center justify-center text-white">
+                        {post.user.username[0].toUpperCase()}
+                      </div>
+                    )}
+                  </Link>
+                </div>
+
+                {/* Post content */}
+                <div className="flex-1">
+                  <div className="mb-2">
                     <Link 
                       href={`/users/${post.user.id}`}
-                      className="hover:text-green-600 hover:underline"
-                      onClick={(e) => e.stopPropagation()}
+                      className="text-gray-500 hover:text-green-600"
                     >
                       @{post.user.username}
                     </Link>
-                  </p>
+                  </div>
+                  
                   <Link href={`/posts/${post.id}`}>
-                    <h3 className="text-xl font-bold text-gray-900 hover:text-green-600 mb-2">{post.title}</h3>
+                    <h3 className="text-xl font-bold mb-2 hover:text-green-600">{post.title}</h3>
                   </Link>
+                  
+                  <p className="mb-3">{post.content}</p>
                   
                   {post.image_url && (
                     <img 
                       src={post.image_url} 
                       alt={post.title}
-                      className="rounded-lg max-h-96 object-cover mb-4"
+                      className="rounded-lg max-h-96 w-full object-cover mb-3"
                     />
                   )}
                   
-                  <Link href={`/posts/${post.id}`} className="block">
-                    <p className="text-gray-900 mb-4 line-clamp-3">{post.content}</p>
-                    <div className="flex items-center text-sm text-gray-900">
-                      <div className="flex items-center mr-4">
-                        <ArrowUp className="w-4 h-4 mr-1" />
-                        <span>{post.upvotes_count || 0} upvotes</span>
-                      </div>
-                      <div className="flex items-center mr-4">
-                        <MessageSquare className="w-4 h-4 mr-1" />
-                        <span>{post.comments_count || 0} comments</span>
-                      </div>
-                      <span className="text-gray-600">
-                        {new Date(post.created_at).toLocaleDateString()}
-                      </span>
-                    </div>
-                  </Link>
+                  <div className="flex items-center text-gray-500">
+                    <button 
+                      className={`flex items-center mr-4 ${
+                        post.upvoted_by_current_user 
+                          ? "text-green-600 font-bold" 
+                          : "hover:text-green-600"
+                      }`}
+                      onClick={() => handleUpvote(post.id, post.upvoted_by_current_user)}
+                    >
+                      <ArrowUp className={`w-4 h-4 mr-1 ${post.upvoted_by_current_user ? "fill-green-600" : ""}`} />
+                      <span>{post.upvotes_count || 0}</span>
+                    </button>
+                    <button className="flex items-center hover:text-green-600">
+                      <MessageSquare className="w-4 h-4 mr-1" />
+                      <span>{post.comments_count || 0}</span>
+                    </button>
+                    <span className="ml-auto text-sm">
+                      {new Date(post.created_at).toLocaleDateString()}
+                    </span>
+                  </div>
                 </div>
-              );
-            })}
-          </div>
+              </div>
+            </article>
+          ))
         )}
       </div>
+
       <CreatePostModal
         communityId={communityId}
         isOpen={isCreatePostModalOpen}
@@ -289,6 +332,6 @@ export default function CommunityPage({ params }: { params: Promise<{ id: string
           window.location.reload();
         }}
       />
-    </main>
+    </div>
   );
 }

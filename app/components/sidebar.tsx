@@ -41,59 +41,54 @@ export const Sidebar = () => {
   };
 
   return (
-    <aside className="w-1/5 p-4 bg-slate-100 h-screen fixed top-0 left-0 mt-16 shadow-md overflow-y-auto">
-      <div className="space-y-6">
-        <div>
-          <h2 className="text-lg font-bold text-gray-900 mb-3">Communities</h2>
-          {isLoading ? (
-            <div className="text-gray-900">Loading communities...</div>
-          ) : (
-            <>
-              <ul className="space-y-2 mb-2">
-                {communities.map((community) => (
-                  <Link href={`/communities/${community.id}`} key={community.id}>
-                    <li className="px-3 py-2 text-gray-700 rounded-md hover:bg-slate-200 cursor-pointer transition-colors flex items-center">
-                      <div className="w-6 h-6 rounded-full bg-green-100 mr-3 flex items-center justify-center">
-                        <span className="text-green-600 text-xs">{community.name[0]}</span>
-                      </div>
-                      {community.name}
-                    </li>
-                  </Link>
-                ))}
-              </ul>
-              
-              <button
-                onClick={() => setIsCreateModalOpen(true)}
-                className="w-full px-3 py-2 text-gray-700 rounded-md hover:bg-slate-200 cursor-pointer transition-colors flex items-center"
-              >
-                <div className="w-6 h-6 rounded-full bg-green-100 mr-3 flex items-center justify-center">
-                  <PlusCircle className="w-4 h-4 text-green-600" />
-                </div>
-                Create Community
-              </button>
-            </>
-          )}
+    <div className="flex flex-col space-y-6">
+      {/* Communities section */}
+      <div>
+        <h2 className="text-base font-semibold text-[rgb(var(--foreground))] mb-3">
+          Communities
+        </h2>
+        <div className="space-y-2">
+          {communities.map((community) => (
+            <Link 
+              href={`/communities/${community.id}`} 
+              key={community.id}
+              className="flex items-center px-3 py-2 rounded-lg hover:bg-[rgb(var(--accent))] transition-colors"
+            >
+              <div className="w-8 h-8 rounded-full bg-[rgb(var(--primary))] flex items-center justify-center text-[rgb(var(--background))]">
+                {community.name[0]}
+              </div>
+              <span className="ml-3 text-[rgb(var(--foreground))]">
+                {community.name}
+              </span>
+            </Link>
+          ))}
         </div>
+        
+        <button
+          onClick={() => setIsCreateModalOpen(true)}
+          className="w-full mt-4 px-3 py-2 text-[rgb(var(--primary))] rounded-lg
+                   hover:bg-[rgb(var(--accent))] transition-colors flex items-center"
+        >
+          <PlusCircle className="w-5 h-5 mr-2" />
+          Create Community
+        </button>
+      </div>
 
-        <div className="pt-4 border-t border-slate-200">
-          <h3 className="text-sm font-medium text-gray-500 mb-3">TRENDING TODAY</h3>
-          <div className="space-y-2">
-            <div className="text-sm text-gray-600 hover:bg-slate-200 p-2 rounded-md cursor-pointer">
-              Popular Posts
-            </div>
-            <div className="text-sm text-gray-600 hover:bg-slate-200 p-2 rounded-md cursor-pointer">
-              New Posts
-            </div>
+      {/* Trending section */}
+      <div className="pt-4 border-t border-[rgb(var(--muted))/20]">
+        <h3 className="text-sm font-medium text-[rgb(var(--muted))] mb-3">
+          TRENDING TODAY
+        </h3>
+        <div className="space-y-2">
+          <div className="px-3 py-2 rounded-lg hover:bg-[rgb(var(--accent))] cursor-pointer transition-colors">
+            <span className="text-sm text-[rgb(var(--foreground))]">Popular Posts</span>
+          </div>
+          <div className="px-3 py-2 rounded-lg hover:bg-[rgb(var(--accent))] cursor-pointer transition-colors">
+            <span className="text-sm text-[rgb(var(--foreground))]">New Posts</span>
           </div>
         </div>
       </div>
-
-      <CreateCommunityModal
-        isOpen={isCreateModalOpen}
-        onClose={() => setIsCreateModalOpen(false)}
-        onCommunityCreated={refreshCommunities}
-      />
-    </aside>
+    </div>
   );
 };
 

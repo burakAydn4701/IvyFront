@@ -66,91 +66,30 @@ export default function Navbar() {
   };
 
   return (
-    <nav className="bg-white shadow-md">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between h-16">
-          {/* Left Section - Logo Only */}
-          <div className="flex items-center">
-            <Link href="/" className="flex items-center gap-2">
-              <Image
-                src="/icon.png"
-                alt="IvyLeagueTr Logo"
-                width={32}
-                height={32}
-                className="object-contain"
-              />
-              <span className="text-2xl font-bold text-green-600">
-                IvyLeagueTr
-              </span>
+    <nav className="fixed top-0 left-0 right-0 z-50 border-b bg-[rgb(var(--surface))]">
+      <div className="px-4">
+        <div className="flex h-16 items-center justify-between">
+          <Link 
+            href="/" 
+            className="text-[rgb(var(--primary))] text-xl font-bold"
+          >
+            IvyLeagueTr
+          </Link>
+          
+          {/* Navigation links */}
+          <div className="flex items-center space-x-2">
+            <Link 
+              href="/login" 
+              className="px-3 py-2 text-[rgb(var(--muted))] hover:text-[rgb(var(--primary))] transition-colors"
+            >
+              Login
             </Link>
-          </div>
-
-          {/* Right Section */}
-          <div className="flex items-center">
-            {isClient && isAuthenticated ? (
-              <>
-                <Link 
-                  href="/messages" 
-                  className="mr-6 text-gray-700 hover:text-green-600"
-                >
-                  <Mail className="w-6 h-6" />
-                </Link>
-                <div className="relative" ref={dropdownRef}>
-                  {/* Profile Picture */}
-                  <div 
-                    className="w-10 h-10 rounded-full overflow-hidden border-2 border-green-500 cursor-pointer"
-                    onClick={toggleDropdown}
-                  >
-                    {user?.profile_photo_url ? (
-                      <Image
-                        src={user.profile_photo_url}
-                        alt="Profile"
-                        width={40}
-                        height={40}
-                        className="object-cover"
-                      />
-                    ) : (
-                      <div className="w-full h-full bg-gray-200 flex items-center justify-center">
-                        <span className="text-gray-500 text-sm font-bold">
-                          {user?.username?.charAt(0)?.toUpperCase() || 'U'}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Dropdown (appears on click) */}
-                  {isDropdownOpen && (
-                    <div className="absolute right-0 mt-2 w-48 bg-white rounded shadow-lg py-1 z-50">
-                      <Link 
-                        href="/profile" 
-                        className="block px-4 py-2 text-gray-700 hover:bg-gray-100"
-                        onClick={() => setIsDropdownOpen(false)}
-                      >
-                        Profile
-                      </Link>
-                      <button
-                        onClick={() => {
-                          handleLogout();
-                          setIsDropdownOpen(false);
-                        }}
-                        className="block w-full text-left px-4 py-2 text-red-600 hover:bg-gray-100"
-                      >
-                        Logout
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </>
-            ) : (
-              <div className="flex items-center space-x-2">
-                <Link href="/login" className="px-3 py-2 text-gray-700 hover:text-green-600">
-                  Login
-                </Link>
-                <Link href="/signup" className="px-3 py-2 bg-green-600 text-white hover:bg-green-700 rounded">
-                  Sign Up
-                </Link>
-              </div>
-            )}
+            <Link 
+              href="/signup" 
+              className="px-3 py-2 bg-[rgb(var(--primary))] text-[rgb(var(--background))] hover:opacity-90 rounded transition-opacity"
+            >
+              Sign Up
+            </Link>
           </div>
         </div>
       </div>
